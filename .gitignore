@@ -12,11 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Python backend
+backend/venv/
+__pycache__/
+*.py[cod]
+
 # Secrets
 .env
 .env.*
 !.env.example
-
 
 # Editor directories and files
 .vscode/*
