@@ -75,3 +75,7 @@ performance use SQLAlchemy. Set `DATABASE_URL` to a hosted PostgreSQL connection
 string for durable production storage. Without it, the backend uses
 `backend/pocket_tutor.db` locally or temporary `/tmp` storage on Vercel. Set
 `POCKET_TUTOR_DB_PATH` to use a different local SQLite file.
+
+For Supabase, copy `.env.example` to `.env`, use the transaction pooler URI
+(port 6543) on Vercel, and run `supabase/schema.sql` in the SQL Editor. See the
+root README for the full checklist.

@@ -4,6 +4,7 @@ import unittest
 
 TEST_DB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 TEST_DB.close()
+os.environ["DATABASE_URL"] = ""
 os.environ["POCKET_TUTOR_DB_PATH"] = TEST_DB.name
 
 import main
@@ -15,6 +16,8 @@ class PocketTutorBackendTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        main.database.engine().dispose()
+        main.database.engine.cache_clear()
         if os.path.exists(TEST_DB.name):
             os.unlink(TEST_DB.name)
 

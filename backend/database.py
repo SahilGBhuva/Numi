@@ -6,12 +6,16 @@ from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import (
     Column, Date, DateTime, ForeignKey, Integer, MetaData, String, Table,
     UniqueConstraint, and_, create_engine, delete, inspect, or_, select, update,
 )
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import NullPool
 
+
+load_dotenv(Path(__file__).with_name(".env"))
 
 DEFAULT_DB_PATH = Path(__file__).with_name("pocket_tutor.db")
 VERCEL_DB_PATH = Path("/tmp/pocket_tutor.db")
@@ -68,20 +72,42 @@ def sqlite_path() -> Path:
 
 def database_url() -> str:
     configured_url = os.getenv("DATABASE_URL")
-    if configured_url:
-        if configured_url.startswith("postgres://"):
-            return configured_url.replace("postgres://", "postgresql+psycopg://", 1)
-        if configured_url.startswith("postgresql://"):
-            return configured_url.replace("postgresql://", "postgresql+psycopg://", 1)
-        return configured_url
-    return f"sqlite:///{sqlite_path()}"
+    if not configured_url:
+        return f"sqlite:///{sqlite_path()}"
+
+    url = configured_url
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg://", 1)
+    elif url.startswith("postgresql+psycopg2://"):
+        url = url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+    elif url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+    if ("supabase.co" in url or "supabase.com" in url) and "sslmode=" not in url:
+        url += ("&" if "?" in url else "?") + "sslmode=require"
+    return url
+
+
+def _uses_supabase_pooler(url: str) -> bool:
+    return "pooler.supabase.com" in url or ":6543" in url
 
 
 @lru_cache(maxsize=1)
 def engine() -> Engine:
     url = database_url()
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, pool_pre_ping=True, connect_args=connect_args)
+    kwargs: dict = {"pool_pre_ping": True}
+    if url.startswith("sqlite"):
+        kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        connect_args: dict = {}
+        if _uses_supabase_pooler(url):
+            # PgBouncer transaction mode does not support prepared statements.
+            connect_args["prepare_threshold"] = None
+        if connect_args:
+            kwargs["connect_args"] = connect_args
+        if os.getenv("VERCEL"):
+            kwargs["poolclass"] = NullPool
+    return create_engine(url, **kwargs)
 
 
 def init_db() -> None:

@@ -52,6 +52,23 @@ that variable it falls back to SQLite; on Vercel, the fallback lives in writable
 hosted Postgres database and expose its connection string as `DATABASE_URL` for
 durable learner progress.
 
+### Supabase (recommended for Vercel)
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor**, paste `supabase/schema.sql`, and run it. That creates
+   `student_progress`, `topic_progress`, `profiles`, and `friendships`.
+3. Copy the **Transaction pooler** URI from **Project Settings → Database**
+   (port `6543`). Replace `[YOUR-PASSWORD]` with the database password.
+4. Locally, copy `backend/.env.example` to `backend/.env` and set
+   `DATABASE_URL`. On Vercel, add the same `DATABASE_URL` under **Project
+   Settings → Environment Variables**.
+5. Restart the API (or redeploy). FastAPI talks to Supabase Postgres through
+   SQLAlchemy; the React app keeps calling `/api/*` and does not need the
+   Supabase anon key.
+
+Row Level Security is on with no public policies, so the Supabase REST API
+cannot read learner rows. Only the FastAPI `DATABASE_URL` connection can.
+
 Each browser receives a random learner ID stored in local storage, so visitors
 do not share the same progress record. Authentication can replace that browser
 identity later without changing the progress API.
