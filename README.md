@@ -1,4 +1,4 @@
-# GameMath
+# Numi
 
 Group repo for Pocket Tutor: a polished Vite React learning experience, a
 FastAPI tutoring API, and persistent SQLite progress storage.
