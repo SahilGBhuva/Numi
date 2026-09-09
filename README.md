@@ -46,7 +46,12 @@ Import the repository with the root directory set to `./`. The root
 `vercel.json` deploys the Vite frontend and FastAPI backend together, routes
 `/api/*` to FastAPI, and sends every other request to the frontend.
 
-The current SQLite database uses Vercel's writable `/tmp` directory when
-deployed. That is suitable for demonstrating the complete app, but it is not
-durable storage: progress may reset when a serverless instance is replaced.
-Use a hosted database before relying on accounts or permanent learner progress.
+The backend uses PostgreSQL automatically when `DATABASE_URL` is set. Without
+that variable it falls back to SQLite; on Vercel, the fallback lives in writable
+`/tmp` storage and may reset when a serverless instance is replaced. Connect a
+hosted Postgres database and expose its connection string as `DATABASE_URL` for
+durable learner progress.
+
+Each browser receives a random learner ID stored in local storage, so visitors
+do not share the same progress record. Authentication can replace that browser
+identity later without changing the progress API.

@@ -1,3 +1,5 @@
 fastapi
 uvicorn[standard]
 eval_type_backport
+sqlalchemy>=2.0,<3.0
+psycopg[binary]>=3.2,<4.0

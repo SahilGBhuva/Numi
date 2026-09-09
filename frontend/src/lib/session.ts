@@ -1,6 +1,16 @@
 import type { Session } from './types'
 
 const STORAGE_KEY = 'cac-study-session'
+const STUDENT_ID_KEY = 'numi-student-id'
+
+export function getStudentId(): string {
+  const savedId = localStorage.getItem(STUDENT_ID_KEY)
+  if (savedId) return savedId
+
+  const studentId = crypto.randomUUID()
+  localStorage.setItem(STUDENT_ID_KEY, studentId)
+  return studentId
+}
 
 export function createDraftSession(topic: string, notes: string): Session {
   return {
