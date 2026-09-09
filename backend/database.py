@@ -1,15 +1,43 @@
 from __future__ import annotations
 
 import os
-import sqlite3
+from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
+
+from sqlalchemy import (
+    Column, Date, DateTime, ForeignKey, Integer, MetaData, String, Table,
+    create_engine, delete, inspect, select, update,
+)
+from sqlalchemy.engine import Engine
 
 
 DEFAULT_DB_PATH = Path(__file__).with_name("pocket_tutor.db")
 VERCEL_DB_PATH = Path("/tmp/pocket_tutor.db")
+metadata = MetaData()
+
+student_progress = Table(
+    "student_progress", metadata,
+    Column("student_id", String(100), primary_key=True),
+    Column("total_xp", Integer, nullable=False, default=0),
+    Column("attempts", Integer, nullable=False, default=0),
+    Column("correct_answers", Integer, nullable=False, default=0),
+    Column("streak", Integer, nullable=False, default=0),
+    Column("best_streak", Integer, nullable=False, default=0),
+    Column("last_active_date", Date),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+topic_progress = Table(
+    "topic_progress", metadata,
+    Column("student_id", String(100), ForeignKey("student_progress.student_id", ondelete="CASCADE"), primary_key=True),
+    Column("topic", String(50), primary_key=True),
+    Column("attempts", Integer, nullable=False, default=0),
+    Column("correct_answers", Integer, nullable=False, default=0),
+)
 
 
-def db_path() -> Path:
+def sqlite_path() -> Path:
     configured_path = os.getenv("POCKET_TUTOR_DB_PATH")
     if configured_path:
         return Path(configured_path)
@@ -18,92 +46,99 @@ def db_path() -> Path:
     return DEFAULT_DB_PATH
 
 
-def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(db_path())
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+def database_url() -> str:
+    configured_url = os.getenv("DATABASE_URL")
+    if configured_url:
+        if configured_url.startswith("postgres://"):
+            return configured_url.replace("postgres://", "postgresql+psycopg://", 1)
+        if configured_url.startswith("postgresql://"):
+            return configured_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return configured_url
+    return f"sqlite:///{sqlite_path()}"
+
+
+@lru_cache(maxsize=1)
+def engine() -> Engine:
+    url = database_url()
+    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+    return create_engine(url, pool_pre_ping=True, connect_args=connect_args)
 
 
 def init_db() -> None:
-    with connect() as connection:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS student_progress (
-                student_id TEXT PRIMARY KEY,
-                total_xp INTEGER NOT NULL DEFAULT 0,
-                attempts INTEGER NOT NULL DEFAULT 0,
-                correct_answers INTEGER NOT NULL DEFAULT 0,
-                streak INTEGER NOT NULL DEFAULT 0,
-                best_streak INTEGER NOT NULL DEFAULT 0,
-                last_active_date TEXT,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS topic_progress (
-                student_id TEXT NOT NULL,
-                topic TEXT NOT NULL,
-                attempts INTEGER NOT NULL DEFAULT 0,
-                correct_answers INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (student_id, topic),
-                FOREIGN KEY (student_id) REFERENCES student_progress(student_id)
-                    ON DELETE CASCADE
-            );
-            """
-        )
-        columns = {
-            row["name"]
-            for row in connection.execute("PRAGMA table_info(student_progress)").fetchall()
-        }
+    active_engine = engine()
+    metadata.create_all(active_engine)
+    if active_engine.dialect.name == "sqlite":
+        columns = {column["name"] for column in inspect(active_engine).get_columns("student_progress")}
         if "last_active_date" not in columns:
-            connection.execute("ALTER TABLE student_progress ADD COLUMN last_active_date TEXT")
-            # Older versions counted correct answers as days, so discard that invalid streak.
-            connection.execute(
-                "UPDATE student_progress SET streak = 0, best_streak = 0"
-            )
+            with active_engine.begin() as connection:
+                connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN last_active_date DATE")
+                connection.execute(update(student_progress).values(streak=0, best_streak=0))
+
+
+def _next_streak(current_streak: int, last_active: date | None, correct: bool, today: date) -> int:
+    if not correct or last_active == today:
+        return current_streak
+    if last_active == today - timedelta(days=1):
+        return current_streak + 1
+    return 1
 
 
 def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict:
     init_db()
-    with connect() as connection:
+    today = date.today()
+    now = datetime.now(timezone.utc)
+    with engine().begin() as connection:
+        progress = connection.execute(
+            select(student_progress).where(student_progress.c.student_id == student_id)
+        ).mappings().first()
+        if progress is None:
+            connection.execute(student_progress.insert().values(
+                student_id=student_id, total_xp=0, attempts=0, correct_answers=0,
+                streak=0, best_streak=0, last_active_date=None, updated_at=now,
+            ))
+            progress = connection.execute(
+                select(student_progress).where(student_progress.c.student_id == student_id)
+            ).mappings().one()
+
+        streak = _next_streak(progress["streak"], progress["last_active_date"], correct, today)
         connection.execute(
-            "INSERT OR IGNORE INTO student_progress (student_id) VALUES (?)",
-            (student_id,),
+            update(student_progress)
+            .where(student_progress.c.student_id == student_id)
+            .values(
+                total_xp=progress["total_xp"] + xp,
+                attempts=progress["attempts"] + 1,
+                correct_answers=progress["correct_answers"] + int(correct),
+                streak=streak,
+                best_streak=max(progress["best_streak"], streak),
+                last_active_date=today if correct else progress["last_active_date"],
+                updated_at=now,
+            )
         )
-        connection.execute(
-            """
-            UPDATE student_progress
-            SET total_xp = total_xp + ?,
-                attempts = attempts + 1,
-                correct_answers = correct_answers + ?,
-                streak = CASE
-                    WHEN NOT ? THEN streak
-                    WHEN last_active_date = DATE('now') THEN streak
-                    WHEN last_active_date = DATE('now', '-1 day') THEN streak + 1
-                    ELSE 1
-                END,
-                best_streak = MAX(best_streak, CASE
-                    WHEN NOT ? THEN streak
-                    WHEN last_active_date = DATE('now') THEN streak
-                    WHEN last_active_date = DATE('now', '-1 day') THEN streak + 1
-                    ELSE 1
-                END),
-                last_active_date = CASE WHEN ? THEN DATE('now') ELSE last_active_date END,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE student_id = ?
-            """,
-            (xp, int(correct), int(correct), int(correct), int(correct), student_id),
-        )
-        connection.execute(
-            """
-            INSERT INTO topic_progress (student_id, topic, attempts, correct_answers)
-            VALUES (?, ?, 1, ?)
-            ON CONFLICT(student_id, topic) DO UPDATE SET
-                attempts = attempts + 1,
-                correct_answers = correct_answers + excluded.correct_answers
-            """,
-            (student_id, topic, int(correct)),
-        )
+
+        topic_record = connection.execute(
+            select(topic_progress).where(
+                topic_progress.c.student_id == student_id,
+                topic_progress.c.topic == topic,
+            )
+        ).mappings().first()
+        if topic_record is None:
+            connection.execute(topic_progress.insert().values(
+                student_id=student_id, topic=topic, attempts=1,
+                correct_answers=int(correct),
+            ))
+        else:
+            connection.execute(
+                update(topic_progress)
+                .where(
+                    topic_progress.c.student_id == student_id,
+                    topic_progress.c.topic == topic,
+                )
+                .values(
+                    attempts=topic_record["attempts"] + 1,
+                    correct_answers=topic_record["correct_answers"] + int(correct),
+                )
+            )
+
     record = get_progress(student_id)
     assert record is not None
     return record
@@ -111,17 +146,15 @@ def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict
 
 def get_progress(student_id: str) -> dict | None:
     init_db()
-    with connect() as connection:
+    with engine().connect() as connection:
         progress = connection.execute(
-            "SELECT * FROM student_progress WHERE student_id = ?",
-            (student_id,),
-        ).fetchone()
+            select(student_progress).where(student_progress.c.student_id == student_id)
+        ).mappings().first()
         if progress is None:
             return None
         topics = connection.execute(
-            "SELECT topic, attempts, correct_answers FROM topic_progress WHERE student_id = ?",
-            (student_id,),
-        ).fetchall()
+            select(topic_progress).where(topic_progress.c.student_id == student_id)
+        ).mappings().all()
 
     return {
         "student_id": progress["student_id"],
@@ -131,17 +164,17 @@ def get_progress(student_id: str) -> dict | None:
         "streak": progress["streak"],
         "best_streak": progress["best_streak"],
         "topics": {
-            row["topic"]: {
-                "attempts": row["attempts"],
-                "correct": row["correct_answers"],
-            }
+            row["topic"]: {"attempts": row["attempts"], "correct": row["correct_answers"]}
             for row in topics
         },
     }
 
 
 def reset_db() -> None:
-    path = db_path()
-    if path.exists():
-        path.unlink()
     init_db()
+    active_engine = engine()
+    if active_engine.dialect.name != "sqlite":
+        raise RuntimeError("reset_db is only available for local SQLite databases")
+    with active_engine.begin() as connection:
+        connection.execute(delete(topic_progress))
+        connection.execute(delete(student_progress))
