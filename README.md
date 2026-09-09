@@ -1,11 +1,15 @@
 # GameMath
 
-Group repo for Pocket Tutor: a FastAPI backend and a Vite React frontend.
+Group repo for Pocket Tutor: a polished Vite React learning experience, a
+FastAPI tutoring API, and persistent SQLite progress storage.
 
 ## Folders
 
 - `frontend/` — Vite + React + TypeScript study app
 - `backend/` — FastAPI API (questions, answers, progress)
+
+The three parts are connected end-to-end: the React lesson requests a question,
+FastAPI checks the answer and awards XP, and SQLite saves the learner's progress.
 
 ## Frontend
 
