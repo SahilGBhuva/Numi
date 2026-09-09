@@ -73,6 +73,49 @@ class ProgressResponse(BaseModel):
     weak_topics: list[str]
 
 
+class ProfileCreate(BaseModel):
+    student_id: str = Field(min_length=1, max_length=100)
+    username: str = Field(pattern=r"^[a-z0-9_]{3,24}$")
+    display_name: str = Field(min_length=1, max_length=40)
+
+
+class ProfileResponse(BaseModel):
+    student_id: str
+    username: str
+    display_name: str
+    friend_code: str
+
+
+class FriendRequestCreate(BaseModel):
+    requester_id: str = Field(min_length=1, max_length=100)
+    friend_code: str = Field(min_length=8, max_length=12)
+
+
+class FriendRequestDecision(BaseModel):
+    recipient_id: str = Field(min_length=1, max_length=100)
+    accept: bool
+
+
+class FriendRequestResponse(BaseModel):
+    request_id: int
+    status: str
+
+
+class PendingFriendRequest(BaseModel):
+    request_id: int
+    username: str
+    display_name: str
+
+
+class LeaderboardEntry(BaseModel):
+    student_id: str
+    username: str
+    display_name: str
+    total_xp: int
+    streak: int
+    active_today: bool
+
+
 def normalize_text(value: str) -> str:
     return " ".join(value.strip().lower().split())
 
@@ -232,3 +275,64 @@ def get_progress(student_id: str):
         best_streak=record["best_streak"],
         weak_topics=weak_topics,
     )
+
+
+def social_error(error: ValueError) -> HTTPException:
+    messages = {
+        "profile_exists": (409, "This learner already has a profile"),
+        "username_taken": (409, "That username is already taken"),
+        "profile_not_found": (404, "Create a profile before adding friends"),
+        "friend_not_found": (404, "No learner has that friend code"),
+        "cannot_friend_self": (400, "You cannot send a friend request to yourself"),
+        "friendship_exists": (409, "A friendship or request already exists"),
+        "request_not_found": (404, "Friend request not found"),
+        "request_already_answered": (409, "That friend request was already answered"),
+    }
+    status, message = messages.get(str(error), (400, "Could not complete that friend action"))
+    return HTTPException(status_code=status, detail=message)
+
+
+@app.post("/api/profiles", response_model=ProfileResponse, status_code=201)
+def create_profile(data: ProfileCreate):
+    try:
+        return database.create_profile(data.student_id, data.username, data.display_name.strip())
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.get("/api/profiles/{student_id}", response_model=ProfileResponse)
+def get_profile(student_id: str):
+    profile = database.get_profile(student_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile
+
+
+@app.post("/api/friends/requests", response_model=FriendRequestResponse, status_code=201)
+def create_friend_request(data: FriendRequestCreate):
+    try:
+        return database.send_friend_request(data.requester_id, data.friend_code)
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.patch("/api/friends/requests/{request_id}", response_model=FriendRequestResponse)
+def decide_friend_request(request_id: int, data: FriendRequestDecision):
+    try:
+        return database.respond_to_friend_request(request_id, data.recipient_id, data.accept)
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.get("/api/friends/{student_id}/requests", response_model=list[PendingFriendRequest])
+def get_pending_friend_requests(student_id: str):
+    if database.get_profile(student_id) is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return database.pending_friend_requests(student_id)
+
+
+@app.get("/api/friends/{student_id}/leaderboard", response_model=list[LeaderboardEntry])
+def get_friend_leaderboard(student_id: str):
+    if database.get_profile(student_id) is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return database.friend_leaderboard(student_id)
