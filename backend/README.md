@@ -23,7 +23,7 @@ Use `http://127.0.0.1:8000` as the API base URL. For Vite, copy
 
 ### Generate a question
 
-`POST /generate-question`
+`POST /api/generate-question`
 
 Request: `{"topic":"mixed","difficulty":1}`
 
@@ -31,7 +31,7 @@ Returns `question`, `correct_answer`, `topic`, and `difficulty`. Topics are addi
 
 ### Analyze an answer
 
-`POST /analyze-answer`
+`POST /api/analyze-answer`
 
 Request: `{"question":"What is 2 + 2?","student_answer":"4","correct_answer":"4","student_id":"student-123","topic":"addition"}`
 
@@ -39,13 +39,30 @@ Returns correctness, mistake type, explanation, hint, XP earned, total XP, and s
 
 ### Read progress
 
-`GET /progress/{student_id}`
+`GET /api/progress/{student_id}`
 
 Returns XP, attempts, accuracy, streaks, and weak topics.
 
 ### Health check
 
-`GET /health` returns service status.
+`GET /api/health` returns service status.
+
+### Friend profiles and streak leaderboard
+
+`POST /api/profiles` creates a profile and returns its unique friend code.
+
+`POST /api/friends/requests` sends a request using that friend code.
+
+`GET /api/friends/{student_id}/requests` lists incoming pending requests.
+
+`PATCH /api/friends/requests/{request_id}` accepts or declines a request. The
+body contains `recipient_id` and `accept`.
+
+`GET /api/friends/{student_id}/leaderboard` returns the learner and accepted
+friends ordered by XP, including streak and active-today status.
+
+Browser student IDs are suitable for the current prototype. These routes must
+use authenticated account IDs before Numi allows untrusted public signups.
 
 ## Verify changes
 
@@ -53,9 +70,8 @@ Run `python -m unittest -v test_main.py`.
 
 ## Data storage
 
-Student XP, attempts, streaks, accuracy, and topic performance are stored in
-`backend/pocket_tutor.db` using SQLite. The database is created automatically and
-is ignored by Git. Set `POCKET_TUTOR_DB_PATH` to use a different local database.
-
-SQLite makes the complete app persistent for local development. Before a public
-multi-server launch, migrate the same tables to hosted PostgreSQL or Supabase.
+Student profiles, friendships, XP, attempts, streaks, accuracy, and topic
+performance use SQLAlchemy. Set `DATABASE_URL` to a hosted PostgreSQL connection
+string for durable production storage. Without it, the backend uses
+`backend/pocket_tutor.db` locally or temporary `/tmp` storage on Vercel. Set
+`POCKET_TUTOR_DB_PATH` to use a different local SQLite file.

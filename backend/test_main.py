@@ -83,6 +83,43 @@ class PocketTutorBackendTests(unittest.TestCase):
             main.get_progress("missing")
         self.assertEqual(context.exception.status_code, 404)
 
+    def test_friend_request_and_leaderboard_flow(self):
+        alice = main.create_profile(main.ProfileCreate(
+            student_id="alice-id", username="alice", display_name="Alice",
+        ))
+        main.create_profile(main.ProfileCreate(
+            student_id="bob-id", username="bob_the_builder", display_name="Bob",
+        ))
+        main.analyze_answer(main.AnswerRequest(
+            question="What is 2 + 2?", student_answer="4", correct_answer="4",
+            student_id="alice-id", topic="addition",
+        ))
+
+        request = main.create_friend_request(main.FriendRequestCreate(
+            requester_id="bob-id", friend_code=alice["friend_code"],
+        ))
+        inbox = main.get_pending_friend_requests("alice-id")
+        self.assertEqual(len(inbox), 1)
+        self.assertEqual(inbox[0]["username"], "bob_the_builder")
+
+        main.decide_friend_request(request["request_id"], main.FriendRequestDecision(
+            recipient_id="alice-id", accept=True,
+        ))
+        leaderboard = main.get_friend_leaderboard("bob-id")
+        self.assertEqual([entry["username"] for entry in leaderboard], ["alice", "bob_the_builder"])
+        self.assertEqual(leaderboard[0]["total_xp"], 10)
+        self.assertTrue(leaderboard[0]["active_today"])
+
+    def test_cannot_add_self_or_duplicate_friendship(self):
+        profile = main.create_profile(main.ProfileCreate(
+            student_id="solo-id", username="solo_user", display_name="Solo",
+        ))
+        with self.assertRaises(main.HTTPException) as self_request:
+            main.create_friend_request(main.FriendRequestCreate(
+                requester_id="solo-id", friend_code=profile["friend_code"],
+            ))
+        self.assertEqual(self_request.exception.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+import secrets
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import (
     Column, Date, DateTime, ForeignKey, Integer, MetaData, String, Table,
-    create_engine, delete, inspect, select, update,
+    UniqueConstraint, and_, create_engine, delete, inspect, or_, select, update,
 )
 from sqlalchemy.engine import Engine
 
@@ -34,6 +35,25 @@ topic_progress = Table(
     Column("topic", String(50), primary_key=True),
     Column("attempts", Integer, nullable=False, default=0),
     Column("correct_answers", Integer, nullable=False, default=0),
+)
+
+profiles = Table(
+    "profiles", metadata,
+    Column("student_id", String(100), ForeignKey("student_progress.student_id", ondelete="CASCADE"), primary_key=True),
+    Column("username", String(24), nullable=False, unique=True),
+    Column("display_name", String(40), nullable=False),
+    Column("friend_code", String(12), nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+friendships = Table(
+    "friendships", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("requester_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("recipient_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("status", String(10), nullable=False, default="pending"),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("requester_id", "recipient_id", name="uq_friend_request_direction"),
 )
 
 
@@ -170,11 +190,135 @@ def get_progress(student_id: str) -> dict | None:
     }
 
 
+def create_profile(student_id: str, username: str, display_name: str) -> dict:
+    init_db()
+    now = datetime.now(timezone.utc)
+    with engine().begin() as connection:
+        if connection.execute(select(profiles).where(profiles.c.student_id == student_id)).first():
+            raise ValueError("profile_exists")
+        if connection.execute(select(profiles).where(profiles.c.username == username)).first():
+            raise ValueError("username_taken")
+        if not connection.execute(select(student_progress).where(student_progress.c.student_id == student_id)).first():
+            connection.execute(student_progress.insert().values(
+                student_id=student_id, total_xp=0, attempts=0, correct_answers=0,
+                streak=0, best_streak=0, last_active_date=None, updated_at=now,
+            ))
+        friend_code = ""
+        while not friend_code:
+            candidate = secrets.token_hex(4).upper()
+            if not connection.execute(select(profiles).where(profiles.c.friend_code == candidate)).first():
+                friend_code = candidate
+        connection.execute(profiles.insert().values(
+            student_id=student_id, username=username, display_name=display_name,
+            friend_code=friend_code, created_at=now,
+        ))
+    return get_profile(student_id)
+
+
+def get_profile(student_id: str) -> dict | None:
+    init_db()
+    with engine().connect() as connection:
+        row = connection.execute(select(profiles).where(profiles.c.student_id == student_id)).mappings().first()
+    return dict(row) if row else None
+
+
+def send_friend_request(requester_id: str, friend_code: str) -> dict:
+    init_db()
+    with engine().begin() as connection:
+        recipient = connection.execute(
+            select(profiles).where(profiles.c.friend_code == friend_code.upper())
+        ).mappings().first()
+        if recipient is None:
+            raise ValueError("friend_not_found")
+        recipient_id = recipient["student_id"]
+        if requester_id == recipient_id:
+            raise ValueError("cannot_friend_self")
+        if not connection.execute(select(profiles).where(profiles.c.student_id == requester_id)).first():
+            raise ValueError("profile_not_found")
+        existing = connection.execute(select(friendships).where(or_(
+            and_(friendships.c.requester_id == requester_id, friendships.c.recipient_id == recipient_id),
+            and_(friendships.c.requester_id == recipient_id, friendships.c.recipient_id == requester_id),
+        ))).mappings().first()
+        if existing:
+            raise ValueError("friendship_exists")
+        result = connection.execute(friendships.insert().values(
+            requester_id=requester_id, recipient_id=recipient_id,
+            status="pending", created_at=datetime.now(timezone.utc),
+        ))
+        request_id = result.inserted_primary_key[0]
+    return {"request_id": request_id, "status": "pending", "friend": dict(recipient)}
+
+
+def respond_to_friend_request(request_id: int, recipient_id: str, accept: bool) -> dict:
+    init_db()
+    with engine().begin() as connection:
+        request = connection.execute(select(friendships).where(
+            friendships.c.id == request_id,
+            friendships.c.recipient_id == recipient_id,
+        )).mappings().first()
+        if request is None:
+            raise ValueError("request_not_found")
+        if request["status"] != "pending":
+            raise ValueError("request_already_answered")
+        status = "accepted" if accept else "declined"
+        connection.execute(update(friendships).where(friendships.c.id == request_id).values(status=status))
+    return {"request_id": request_id, "status": status}
+
+
+def pending_friend_requests(student_id: str) -> list[dict]:
+    init_db()
+    requester = profiles.alias("requester")
+    with engine().connect() as connection:
+        rows = connection.execute(
+            select(
+                friendships.c.id.label("request_id"), friendships.c.created_at,
+                requester.c.username, requester.c.display_name,
+            ).join(requester, friendships.c.requester_id == requester.c.student_id)
+            .where(friendships.c.recipient_id == student_id, friendships.c.status == "pending")
+            .order_by(friendships.c.created_at.desc())
+        ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def friend_leaderboard(student_id: str) -> list[dict]:
+    init_db()
+    with engine().connect() as connection:
+        accepted = connection.execute(select(friendships).where(
+            friendships.c.status == "accepted",
+            or_(friendships.c.requester_id == student_id, friendships.c.recipient_id == student_id),
+        )).mappings().all()
+        friend_ids = {
+            row["recipient_id"] if row["requester_id"] == student_id else row["requester_id"]
+            for row in accepted
+        }
+        friend_ids.add(student_id)
+        rows = connection.execute(
+            select(
+                profiles.c.student_id, profiles.c.username, profiles.c.display_name,
+                student_progress.c.total_xp, student_progress.c.streak,
+                student_progress.c.last_active_date,
+            ).join(student_progress, profiles.c.student_id == student_progress.c.student_id)
+            .where(profiles.c.student_id.in_(friend_ids))
+            .order_by(student_progress.c.total_xp.desc(), profiles.c.username.asc())
+        ).mappings().all()
+    today = date.today()
+    return [
+        {
+            "student_id": row["student_id"], "username": row["username"],
+            "display_name": row["display_name"], "total_xp": row["total_xp"],
+            "streak": row["streak"], "active_today": row["last_active_date"] == today,
+        }
+        for row in rows
+    ]
+
+
 def reset_db() -> None:
     init_db()
     active_engine = engine()
     if active_engine.dialect.name != "sqlite":
         raise RuntimeError("reset_db is only available for local SQLite databases")
     with active_engine.begin() as connection:
+        connection.execute(delete(friendships))
+        connection.execute(delete(profiles))
         connection.execute(delete(topic_progress))
         connection.execute(delete(student_progress))
