@@ -69,6 +69,11 @@ def sqlite_path() -> Path:
 def database_url() -> str:
     configured_url = os.getenv("DATABASE_URL")
     if configured_url:
+        configured_url = configured_url.strip()
+        if configured_url.startswith("DATABASE_URL="):
+            configured_url = configured_url.removeprefix("DATABASE_URL=").strip()
+        if len(configured_url) >= 2 and configured_url[0] == configured_url[-1] and configured_url[0] in "'\"`":
+            configured_url = configured_url[1:-1].strip()
         if configured_url.startswith("postgres://"):
             return configured_url.replace("postgres://", "postgresql+psycopg://", 1)
         if configured_url.startswith("postgresql://"):
