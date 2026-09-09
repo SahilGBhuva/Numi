@@ -15,7 +15,7 @@ Interactive docs: http://127.0.0.1:8000/docs
 
 ## Frontend connection
 
-Use `http://127.0.0.1:8000` as the API base URL. For Next.js, add `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` to `.env.local`. Local apps on localhost:3000 and 127.0.0.1:3000 are allowed by CORS.
+Use `http://127.0.0.1:8000` as the API base URL. The Vite app in `frontend/` proxies `/api` to this server. CORS also allows localhost:3000 and localhost:5173.
 
 ## API contract
 

@@ -9,8 +9,9 @@ High school students paste notes or a topic, take a short multiple-choice quiz, 
 ## Conventions
 
 - One file per screen in `src/pages/` (`Home.tsx`, later `Quiz.tsx`, `Results.tsx`).
-- Shared types and helpers live in `src/lib/` (`types.ts`, `session.ts`). Do not create one file per function.
+- Shared types and helpers live in `src/lib/` (`types.ts`, `session.ts`, `api.ts`). Do not create one file per function.
 - Persist the last session in `localStorage`.
+- Pocket Tutor API calls go through `lib/api.ts` (Vite proxies `/api` to `http://127.0.0.1:8000`).
 - Put any future AI calls behind `lib/ai.ts` with a sample-question fallback when a key is missing.
 
 ## Secrets

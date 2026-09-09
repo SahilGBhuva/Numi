@@ -2,12 +2,28 @@
 
 Group repo for Pocket Tutor: a FastAPI backend and a Vite React frontend.
 
+## Run both together
+
+From the repo root:
+
+```bash
+chmod +x run-dev.sh
+./run-dev.sh
+```
+
+Then open:
+
+- Frontend: http://127.0.0.1:5173
+- API docs: http://127.0.0.1:8000/docs
+
+The Vite app proxies `/api` to the FastAPI server, so the homepage can generate and check math questions.
+
 ## Folders
 
-- `frontend/` — Vite + React + TypeScript study app
-- `backend/` — FastAPI API (questions, answers, progress)
+- `frontend/` — Vite + React + TypeScript
+- `backend/` — FastAPI (questions, answers, progress)
 
-## Frontend
+## Frontend only
 
 ```bash
 cd frontend
@@ -15,19 +31,6 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173.
+## Backend only
 
-## Backend
-
-See `backend/README.md`. Short version:
-
-```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
-
-API: http://127.0.0.1:8000  
-Docs: http://127.0.0.1:8000/docs
+See `backend/README.md`.
