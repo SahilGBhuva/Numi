@@ -33,7 +33,7 @@
 .lesson-top { padding:25px 30px 20px; display:flex; justify-content:space-between; align-items:center; }.lesson-top>div:first-child { display:flex; align-items:center; gap:12px; }
 .lesson-label { color:var(--topic-color); font-size:13px; font-weight:900; }.question-count { color:var(--muted); font-size:10px; font-weight:800; letter-spacing:1.3px; }
 .difficulty { display:flex; padding:4px; border-radius:12px; background:var(--surface); }.difficulty button { border:0; width:31px; height:27px; border-radius:9px; color:var(--muted); background:transparent; font-weight:800; cursor:pointer; }.difficulty button.active { color:white; background:var(--topic-color); }
-.progress-track { height:5px; background:var(--surface); }.progress-track span { display:block; width:20%; height:100%; background:var(--topic-color); border-radius:0 99px 99px 0; }
+.progress-track { height:5px; background:var(--surface); }.progress-track span { display:block; height:100%; background:var(--topic-color); border-radius:0 99px 99px 0; transition:width .25s ease; }
 .question-area { padding:56px 58px 38px; }.prompt-kicker { display:block; color:var(--muted); font-size:12px; font-weight:800; letter-spacing:1px; text-transform:uppercase; }
 .question-area h3 { min-height:80px; margin:16px 0 46px; color:var(--ink); font-size:clamp(35px,5vw,58px); line-height:1.08; letter-spacing:-2.5px; }
 .question-area label { display:block; margin-bottom:9px; color:var(--ink); font-size:12px; font-weight:800; }

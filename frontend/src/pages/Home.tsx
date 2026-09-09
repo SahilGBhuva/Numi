@@ -4,6 +4,7 @@ import type { AnswerResult, GeneratedQuestion, Progress, Topic } from '../lib/ap
 import './Home.css'
 
 const STUDENT_ID = 'demo-learner'
+const QUESTIONS_PER_LESSON = 5
 const topics: { id: Topic; label: string; icon: string; color: string }[] = [
   { id: 'mixed', label: 'Daily mix', icon: '✦', color: '#7658ff' },
   { id: 'addition', label: 'Addition', icon: '+', color: '#00bfa6' },
@@ -15,6 +16,7 @@ const topics: { id: Topic; label: string; icon: string; color: string }[] = [
 export function Home() {
   const [topic, setTopic] = useState<Topic>('mixed')
   const [difficulty, setDifficulty] = useState(1)
+  const [questionNumber, setQuestionNumber] = useState(1)
   const [question, setQuestion] = useState<GeneratedQuestion | null>(null)
   const [answer, setAnswer] = useState('')
   const [result, setResult] = useState<AnswerResult | null>(null)
@@ -23,9 +25,12 @@ export function Home() {
   const [error, setError] = useState<string | null>(null)
   const activeTopic = useMemo(() => topics.find((item) => item.id === topic)!, [topic])
 
-  async function loadQuestion(nextTopic = topic, nextDifficulty = difficulty) {
+  async function loadQuestion(nextTopic = topic, nextDifficulty = difficulty, nextQuestionNumber = questionNumber) {
     setLoading(true); setError(null); setResult(null); setAnswer('')
-    try { setQuestion(await generateQuestion(nextTopic, nextDifficulty)) }
+    try {
+      setQuestion(await generateQuestion(nextTopic, nextDifficulty))
+      setQuestionNumber(nextQuestionNumber)
+    }
     catch { setError('Start the backend to begin your lesson.') }
     finally { setLoading(false) }
   }
@@ -48,8 +53,12 @@ export function Home() {
     finally { setLoading(false) }
   }
 
-  function chooseTopic(next: Topic) { setTopic(next); void loadQuestion(next, difficulty) }
-  function chooseDifficulty(next: number) { setDifficulty(next); void loadQuestion(topic, next) }
+  function chooseTopic(next: Topic) { setTopic(next); void loadQuestion(next, difficulty, 1) }
+  function chooseDifficulty(next: number) { setDifficulty(next); void loadQuestion(topic, next, 1) }
+  function advanceQuestion() {
+    const nextQuestionNumber = questionNumber === QUESTIONS_PER_LESSON ? 1 : questionNumber + 1
+    void loadQuestion(topic, difficulty, nextQuestionNumber)
+  }
   const xp = progress?.total_xp ?? result?.total_xp ?? 0
   const streak = progress?.streak ?? result?.streak ?? 0
   const accuracy = progress?.accuracy ?? 0
@@ -72,13 +81,13 @@ export function Home() {
       </aside>
 
       <section className="lesson-card" style={{ '--topic-color': activeTopic.color } as React.CSSProperties}>
-        <div className="lesson-top"><div><span className="lesson-label">{activeTopic.icon} {activeTopic.label}</span><span className="question-count">QUESTION 1 OF 5</span></div><div className="difficulty">{[1,2,3].map((level) => <button key={level} className={difficulty === level ? 'active' : ''} onClick={() => chooseDifficulty(level)}>{level}</button>)}</div></div>
-        <div className="progress-track"><span /></div>
+        <div className="lesson-top"><div><span className="lesson-label">{activeTopic.icon} {activeTopic.label}</span><span className="question-count">QUESTION {questionNumber} OF {QUESTIONS_PER_LESSON}</span></div><div className="difficulty">{[1,2,3].map((level) => <button key={level} className={difficulty === level ? 'active' : ''} onClick={() => chooseDifficulty(level)}>{level}</button>)}</div></div>
+        <div className="progress-track"><span style={{ width: `${questionNumber / QUESTIONS_PER_LESSON * 100}%` }} /></div>
         <div className="question-area">
           {error ? <div className="empty-state"><span>🔌</span><h3>Almost ready!</h3><p>{error}</p><button onClick={() => loadQuestion()}>Try again</button></div> : loading && !question ? <div className="loader">Thinking up a good one…</div> : <>
             <span className="prompt-kicker">Solve this</span><h3>{question?.question}</h3>
             <form onSubmit={submitAnswer}><label htmlFor="answer">Your answer</label><div className="answer-row"><input id="answer" inputMode="decimal" autoComplete="off" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Type your answer" disabled={Boolean(result)} autoFocus/><button className="check-button" disabled={loading || !answer.trim() || Boolean(result)}>{loading ? 'Checking…' : 'Check answer'}</button></div></form>
-            {result && <div className={`feedback ${result.correct ? 'correct' : 'incorrect'}`} role="status"><span className="feedback-icon">{result.correct ? '✓' : '↗'}</span><div><strong>{result.correct ? `Brilliant! +${result.xp_earned} XP` : 'Not quite—keep going.'}</strong><p>{result.correct ? result.explanation : result.hint}</p></div><button onClick={() => loadQuestion()}>{result.correct ? 'Next challenge' : 'Try another'} →</button></div>}
+            {result && <div className={`feedback ${result.correct ? 'correct' : 'incorrect'}`} role="status"><span className="feedback-icon">{result.correct ? '✓' : '↗'}</span><div><strong>{result.correct ? `Brilliant! +${result.xp_earned} XP` : 'Not quite—keep going.'}</strong><p>{result.correct ? result.explanation : result.hint}</p></div><button onClick={advanceQuestion}>{result.correct ? 'Next challenge' : 'Try another'} →</button></div>}
           </>}
         </div>
       </section>

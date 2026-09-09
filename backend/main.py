@@ -178,12 +178,14 @@ def home():
     }
 
 
-@app.get("/health")
+@app.get("/api/health")
+@app.get("/health", include_in_schema=False)
 def health():
     return {"status": "healthy"}
 
 
-@app.post("/analyze-answer", response_model=AnswerResponse)
+@app.post("/api/analyze-answer", response_model=AnswerResponse)
+@app.post("/analyze-answer", response_model=AnswerResponse, include_in_schema=False)
 def analyze_answer(data: AnswerRequest):
     correct = answers_match(data.student_answer, data.correct_answer)
     mistake_type = None if correct else classify_mistake(data.student_answer, data.correct_answer)
@@ -201,12 +203,14 @@ def analyze_answer(data: AnswerRequest):
     )
 
 
-@app.post("/generate-question", response_model=QuestionResponse)
+@app.post("/api/generate-question", response_model=QuestionResponse)
+@app.post("/generate-question", response_model=QuestionResponse, include_in_schema=False)
 def generate_question(data: QuestionRequest):
     return generate_math_question(data.topic, data.difficulty)
 
 
-@app.get("/progress/{student_id}", response_model=ProgressResponse)
+@app.get("/api/progress/{student_id}", response_model=ProgressResponse)
+@app.get("/progress/{student_id}", response_model=ProgressResponse, include_in_schema=False)
 def get_progress(student_id: str):
     record = database.get_progress(student_id)
     if record is None:

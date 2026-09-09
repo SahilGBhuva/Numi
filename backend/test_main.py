@@ -50,6 +50,34 @@ class PocketTutorBackendTests(unittest.TestCase):
         self.assertEqual(progress.total_xp, 10)
         self.assertEqual(progress.accuracy, 100.0)
 
+    def test_multiple_correct_answers_count_as_one_streak_day(self):
+        request = main.AnswerRequest(
+            question="What is 2 + 2?",
+            student_answer="4",
+            correct_answer="4",
+            student_id="daily-streak-student",
+            topic="addition",
+        )
+        main.analyze_answer(request)
+        main.analyze_answer(request)
+        progress = main.get_progress("daily-streak-student")
+        self.assertEqual(progress.streak, 1)
+        self.assertEqual(progress.best_streak, 1)
+
+    def test_wrong_answer_does_not_erase_daily_streak(self):
+        correct_request = main.AnswerRequest(
+            question="What is 2 + 2?",
+            student_answer="4",
+            correct_answer="4",
+            student_id="streak-student",
+            topic="addition",
+        )
+        wrong_request = correct_request.model_copy(update={"student_answer": "5"})
+        main.analyze_answer(correct_request)
+        main.analyze_answer(wrong_request)
+        progress = main.get_progress("streak-student")
+        self.assertEqual(progress.streak, 1)
+
     def test_unknown_student_returns_404(self):
         with self.assertRaises(main.HTTPException) as context:
             main.get_progress("missing")

@@ -6,10 +6,16 @@ from pathlib import Path
 
 
 DEFAULT_DB_PATH = Path(__file__).with_name("pocket_tutor.db")
+VERCEL_DB_PATH = Path("/tmp/pocket_tutor.db")
 
 
 def db_path() -> Path:
-    return Path(os.getenv("POCKET_TUTOR_DB_PATH", DEFAULT_DB_PATH))
+    configured_path = os.getenv("POCKET_TUTOR_DB_PATH")
+    if configured_path:
+        return Path(configured_path)
+    if os.getenv("VERCEL"):
+        return VERCEL_DB_PATH
+    return DEFAULT_DB_PATH
 
 
 def connect() -> sqlite3.Connection:
@@ -30,6 +36,7 @@ def init_db() -> None:
                 correct_answers INTEGER NOT NULL DEFAULT 0,
                 streak INTEGER NOT NULL DEFAULT 0,
                 best_streak INTEGER NOT NULL DEFAULT 0,
+                last_active_date TEXT,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -44,6 +51,16 @@ def init_db() -> None:
             );
             """
         )
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(student_progress)").fetchall()
+        }
+        if "last_active_date" not in columns:
+            connection.execute("ALTER TABLE student_progress ADD COLUMN last_active_date TEXT")
+            # Older versions counted correct answers as days, so discard that invalid streak.
+            connection.execute(
+                "UPDATE student_progress SET streak = 0, best_streak = 0"
+            )
 
 
 def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict:
@@ -59,15 +76,23 @@ def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict
             SET total_xp = total_xp + ?,
                 attempts = attempts + 1,
                 correct_answers = correct_answers + ?,
-                streak = CASE WHEN ? THEN streak + 1 ELSE 0 END,
-                best_streak = CASE
-                    WHEN ? AND streak + 1 > best_streak THEN streak + 1
-                    ELSE best_streak
+                streak = CASE
+                    WHEN NOT ? THEN streak
+                    WHEN last_active_date = DATE('now') THEN streak
+                    WHEN last_active_date = DATE('now', '-1 day') THEN streak + 1
+                    ELSE 1
                 END,
+                best_streak = MAX(best_streak, CASE
+                    WHEN NOT ? THEN streak
+                    WHEN last_active_date = DATE('now') THEN streak
+                    WHEN last_active_date = DATE('now', '-1 day') THEN streak + 1
+                    ELSE 1
+                END),
+                last_active_date = CASE WHEN ? THEN DATE('now') ELSE last_active_date END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE student_id = ?
             """,
-            (xp, int(correct), int(correct), int(correct), student_id),
+            (xp, int(correct), int(correct), int(correct), int(correct), student_id),
         )
         connection.execute(
             """
