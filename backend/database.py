@@ -6,10 +6,16 @@ from pathlib import Path
 
 
 DEFAULT_DB_PATH = Path(__file__).with_name("pocket_tutor.db")
+VERCEL_DB_PATH = Path("/tmp/pocket_tutor.db")
 
 
 def db_path() -> Path:
-    return Path(os.getenv("POCKET_TUTOR_DB_PATH", DEFAULT_DB_PATH))
+    configured_path = os.getenv("POCKET_TUTOR_DB_PATH")
+    if configured_path:
+        return Path(configured_path)
+    if os.getenv("VERCEL"):
+        return VERCEL_DB_PATH
+    return DEFAULT_DB_PATH
 
 
 def connect() -> sqlite3.Connection:
