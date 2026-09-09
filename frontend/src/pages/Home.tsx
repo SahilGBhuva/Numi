@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { analyzeAnswer, generateQuestion, getProgress } from '../lib/api'
 import type { AnswerResult, GeneratedQuestion, Progress, Topic } from '../lib/api'
+import { getStudentId } from '../lib/session'
 import './Home.css'
 
-const STUDENT_ID = 'demo-learner'
 const QUESTIONS_PER_LESSON = 5
 const topics: { id: Topic; label: string; icon: string; color: string }[] = [
   { id: 'mixed', label: 'Daily mix', icon: '✦', color: '#7658ff' },
@@ -14,6 +14,7 @@ const topics: { id: Topic; label: string; icon: string; color: string }[] = [
 ]
 
 export function Home() {
+  const [studentId] = useState(() => getStudentId())
   const [topic, setTopic] = useState<Topic>('mixed')
   const [difficulty, setDifficulty] = useState(1)
   const [questionNumber, setQuestionNumber] = useState(1)
@@ -39,16 +40,16 @@ export function Home() {
     // The initial API request intentionally seeds the first interactive challenge.
     // oxlint-disable-next-line react/set-state-in-effect
     void loadQuestion('mixed', 1)
-    void getProgress(STUDENT_ID).then(setProgress).catch(() => undefined)
-  }, [])
+    void getProgress(studentId).then(setProgress).catch(() => undefined)
+  }, [studentId])
 
   async function submitAnswer(event: React.FormEvent) {
     event.preventDefault()
     if (!question || result) return
     setLoading(true)
     try {
-      setResult(await analyzeAnswer(question, answer, STUDENT_ID))
-      setProgress(await getProgress(STUDENT_ID))
+      setResult(await analyzeAnswer(question, answer, studentId))
+      setProgress(await getProgress(studentId))
     } catch { setError('We could not reach the tutor. Check that the backend is running.') }
     finally { setLoading(false) }
   }
