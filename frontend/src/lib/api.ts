@@ -1,66 +1,30 @@
-import type { AnswerAnalysis, ApiTopic, GeneratedQuestion } from './types'
+export type Topic = 'addition' | 'subtraction' | 'multiplication' | 'division' | 'mixed'
+export type GeneratedQuestion = { question: string; correct_answer: string; topic: Exclude<Topic, 'mixed'>; difficulty: number }
+export type AnswerResult = { correct: boolean; mistake_type: string | null; explanation: string; hint: string | null; xp_earned: number; total_xp: number; streak: number }
+export type Progress = { student_id: string; total_xp: number; attempts: number; correct_answers: number; accuracy: number; streak: number; best_streak: number; weak_topics: string[] }
 
-const STUDENT_KEY = 'cac-student-id'
-const BASE = import.meta.env.VITE_API_URL || '/api'
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
-async function readJson<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    throw new Error(`API ${response.status}`)
-  }
-  return (await response.json()) as T
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, { headers: { 'Content-Type': 'application/json' }, ...options })
+  if (!response.ok) throw new Error(`Pocket Tutor API returned ${response.status}`)
+  return response.json() as Promise<T>
 }
 
-export function getStudentId(): string {
-  const existing = localStorage.getItem(STUDENT_KEY)
-  if (existing) {
-    return existing
-  }
-  const next = `student-${crypto.randomUUID()}`
-  localStorage.setItem(STUDENT_KEY, next)
-  return next
+export function generateQuestion(topic: Topic, difficulty: number) {
+  return request<GeneratedQuestion>('/generate-question', { method: 'POST', body: JSON.stringify({ topic, difficulty }) })
 }
 
-export async function checkHealth(): Promise<boolean> {
-  try {
-    const response = await fetch(`${BASE}/health`)
-    if (!response.ok) {
-      return false
-    }
-    const body = (await response.json()) as { status?: string }
-    return body.status === 'healthy'
-  } catch {
-    return false
-  }
-}
-
-export async function generateQuestion(
-  topic: ApiTopic = 'mixed',
-  difficulty = 1,
-): Promise<GeneratedQuestion> {
-  const response = await fetch(`${BASE}/generate-question`, {
+export function analyzeAnswer(question: GeneratedQuestion, studentAnswer: string, studentId: string) {
+  return request<AnswerResult>('/analyze-answer', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, difficulty }),
+    body: JSON.stringify({ question: question.question, student_answer: studentAnswer, correct_answer: question.correct_answer, student_id: studentId, topic: question.topic }),
   })
-  return readJson<GeneratedQuestion>(response)
 }
 
-export async function analyzeAnswer(input: {
-  question: string
-  studentAnswer: string
-  correctAnswer: string
-  topic: string
-}): Promise<AnswerAnalysis> {
-  const response = await fetch(`${BASE}/analyze-answer`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      question: input.question,
-      student_answer: input.studentAnswer,
-      correct_answer: input.correctAnswer,
-      student_id: getStudentId(),
-      topic: input.topic,
-    }),
-  })
-  return readJson<AnswerAnalysis>(response)
+export async function getProgress(studentId: string): Promise<Progress | null> {
+  const response = await fetch(`${API_URL}/progress/${encodeURIComponent(studentId)}`)
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`Pocket Tutor API returned ${response.status}`)
+  return response.json() as Promise<Progress>
 }

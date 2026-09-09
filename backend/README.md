@@ -15,7 +15,9 @@ Interactive docs: http://127.0.0.1:8000/docs
 
 ## Frontend connection
 
-Use `http://127.0.0.1:8000` as the API base URL. The Vite app in `frontend/` proxies `/api` to this server. CORS also allows localhost:3000 and localhost:5173.
+Use `http://127.0.0.1:8000` as the API base URL. For Vite, copy
+`.env.example` to `.env.local` and set `VITE_API_URL`. Local apps on ports
+3000 and 5173 are allowed by CORS.
 
 ## API contract
 
@@ -49,6 +51,11 @@ Returns XP, attempts, accuracy, streaks, and weak topics.
 
 Run `python -m unittest -v test_main.py`.
 
-## Current limitation
+## Data storage
 
-Progress is stored in memory and resets whenever the backend restarts. Use a shared database before production deployment.
+Student XP, attempts, streaks, accuracy, and topic performance are stored in
+`backend/pocket_tutor.db` using SQLite. The database is created automatically and
+is ignored by Git. Set `POCKET_TUTOR_DB_PATH` to use a different local database.
+
+SQLite makes the complete app persistent for local development. Before a public
+multi-server launch, migrate the same tables to hosted PostgreSQL or Supabase.

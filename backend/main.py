@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import random
-from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+import database
 
 app = FastAPI(
     title="Pocket Tutor API",
@@ -72,18 +73,6 @@ class ProgressResponse(BaseModel):
     weak_topics: list[str]
 
 
-progress_store: dict[str, dict] = defaultdict(
-    lambda: {
-        "total_xp": 0,
-        "attempts": 0,
-        "correct_answers": 0,
-        "streak": 0,
-        "best_streak": 0,
-        "topics": defaultdict(lambda: {"attempts": 0, "correct": 0}),
-    }
-)
-
-
 def normalize_text(value: str) -> str:
     return " ".join(value.strip().lower().split())
 
@@ -144,21 +133,7 @@ def make_hint(question: str, mistake_type: str) -> str:
 
 
 def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict:
-    record = progress_store[student_id]
-    record["attempts"] += 1
-    record["total_xp"] += xp
-    topic_record = record["topics"][topic]
-    topic_record["attempts"] += 1
-
-    if correct:
-        record["correct_answers"] += 1
-        record["streak"] += 1
-        record["best_streak"] = max(record["best_streak"], record["streak"])
-        topic_record["correct"] += 1
-    else:
-        record["streak"] = 0
-
-    return record
+    return database.update_progress(student_id, topic, correct, xp)
 
 
 def number_range(difficulty: int) -> tuple[int, int]:
@@ -233,10 +208,9 @@ def generate_question(data: QuestionRequest):
 
 @app.get("/progress/{student_id}", response_model=ProgressResponse)
 def get_progress(student_id: str):
-    if student_id not in progress_store:
+    record = database.get_progress(student_id)
+    if record is None:
         raise HTTPException(status_code=404, detail="No progress found for this student")
-
-    record = progress_store[student_id]
     accuracy = round(record["correct_answers"] / record["attempts"] * 100, 1) if record["attempts"] else 0.0
     weak_topics = [
         topic

@@ -17,6 +17,7 @@ frontend/dist-ssr
 backend/venv/
 __pycache__/
 *.py[cod]
+backend/*.db
 
 # Secrets
 .env

@@ -1,29 +1,17 @@
 # GameMath
 
-Group repo for Pocket Tutor: a FastAPI backend and a Vite React frontend.
-
-## Run both together
-
-From the repo root:
-
-```bash
-chmod +x run-dev.sh
-./run-dev.sh
-```
-
-Then open:
-
-- Frontend: http://127.0.0.1:5173
-- API docs: http://127.0.0.1:8000/docs
-
-The Vite app proxies `/api` to the FastAPI server, so the homepage can generate and check math questions.
+Group repo for Pocket Tutor: a polished Vite React learning experience, a
+FastAPI tutoring API, and persistent SQLite progress storage.
 
 ## Folders
 
-- `frontend/` — Vite + React + TypeScript
-- `backend/` — FastAPI (questions, answers, progress)
+- `frontend/` — Vite + React + TypeScript study app
+- `backend/` — FastAPI API (questions, answers, progress)
 
-## Frontend only
+The three parts are connected end-to-end: the React lesson requests a question,
+FastAPI checks the answer and awards XP, and SQLite saves the learner's progress.
+
+## Frontend
 
 ```bash
 cd frontend
@@ -31,6 +19,19 @@ npm install
 npm run dev
 ```
 
-## Backend only
+Open http://localhost:5173.
 
-See `backend/README.md`.
+## Backend
+
+See `backend/README.md`. Short version:
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+API: http://127.0.0.1:8000  
+Docs: http://127.0.0.1:8000/docs
