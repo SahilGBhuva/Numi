@@ -1,11 +1,22 @@
+import os
+import tempfile
 import unittest
+
+TEST_DB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+TEST_DB.close()
+os.environ["POCKET_TUTOR_DB_PATH"] = TEST_DB.name
 
 import main
 
 
 class PocketTutorBackendTests(unittest.TestCase):
     def setUp(self):
-        main.progress_store.clear()
+        main.database.reset_db()
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.exists(TEST_DB.name):
+            os.unlink(TEST_DB.name)
 
     def test_numeric_equivalence(self):
         self.assertTrue(main.answers_match("4.0", "4"))
