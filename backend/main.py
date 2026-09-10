@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import random
-from contextlib import asynccontextmanager
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
@@ -12,17 +11,10 @@ from pydantic import BaseModel, Field
 import database
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    database.init_db()
-    yield
-
-
 app = FastAPI(
     title="Pocket Tutor API",
     version="0.2.0",
     description="Math practice, feedback, hints, and lightweight progress tracking.",
-    lifespan=lifespan,
 )
 
 app.add_middleware(

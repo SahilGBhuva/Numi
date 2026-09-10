@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
@@ -80,6 +81,12 @@ def database_url() -> str:
         url = url.removeprefix("DATABASE_URL=").strip()
     if len(url) >= 2 and url[0] == url[-1] and url[0] in "'\"`":
         url = url[1:-1].strip()
+    embedded_url = re.search(
+        r"(?:postgres(?:ql)?(?:\+psycopg2|\+psycopg)?|sqlite)://[^\s'\"`]+",
+        url,
+    )
+    if embedded_url:
+        url = embedded_url.group(0).rstrip("\\")
 
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg://", 1)
