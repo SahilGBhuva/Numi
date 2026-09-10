@@ -34,12 +34,22 @@ export type GeneratedQuestion = {
   difficulty: number
 }
 
-export type AnswerAnalysis = {
-  correct: boolean
-  mistake_type: string | null
-  explanation: string
-  hint: string | null
-  xp_earned: number
-  total_xp: number
-  streak: number
+export type NoteDeposit = {
+  id: string
+  course: string
+  unit: string
+  fileName: string
+  createdAt: string
+}
+
+export type Course = {
+  name: string
+  units: string[]
+}
+
+export type Notebook = {
+  courses: Course[]
+  activeCourse: string
+  activeUnit: string
+  deposits: NoteDeposit[]
 }

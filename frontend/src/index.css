@@ -1,7 +1,40 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Nunito:wght@700;800;900&display=swap');
-:root { --ink:#1c1730; --muted:#777187; --purple:#7154ed; --purple-soft:#eeeafe; --surface:#f5f3fa; --line:#e9e5f0; font-family:'Manrope',system-ui,sans-serif; color:var(--ink); background:radial-gradient(circle at 10% 0%,#f3efff 0,transparent 30%),#fbfaff; font-synthesis:none; text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased; }
-* { box-sizing:border-box; }
-html { scroll-behavior:smooth; }
-body { margin:0; min-width:320px; min-height:100vh; }
-button,input { font-family:inherit; }
-h1,h2,h3,strong,.brand { font-family:'Nunito','Manrope',sans-serif; }
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Outfit:wght@400;600;700;800&display=swap');
+
+:root {
+  --ink: #241910;
+  --muted: #7a6a5c;
+  --wash: #f3e6d4;
+  --paper: #f7f0e4;
+  --ochre: #e0a045;
+  --coral: #d36b4f;
+  --sage: #6f9a7a;
+  --plum: #6d4c8d;
+  font-family: 'Outfit', system-ui, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse at 12% 8%, #f8d9c8 0, transparent 36%),
+    radial-gradient(ellipse at 88% 0%, #d9e7d6 0, transparent 32%),
+    radial-gradient(ellipse at 70% 90%, #efe0c4 0, transparent 40%),
+    var(--paper);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+}
+button, input, select { font-family: inherit; }
+h1, h2, h3, strong { font-family: 'Fraunces', Georgia, serif; }
