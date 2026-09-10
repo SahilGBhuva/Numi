@@ -75,7 +75,12 @@ def database_url() -> str:
     if not configured_url:
         return f"sqlite:///{sqlite_path()}"
 
-    url = configured_url
+    url = configured_url.strip()
+    if url.startswith("DATABASE_URL="):
+        url = url.removeprefix("DATABASE_URL=").strip()
+    if len(url) >= 2 and url[0] == url[-1] and url[0] in "'\"`":
+        url = url[1:-1].strip()
+
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg://", 1)
     elif url.startswith("postgresql+psycopg2://"):
