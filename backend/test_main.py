@@ -39,6 +39,22 @@ class PocketTutorBackendTests(unittest.TestCase):
             else:
                 os.environ["DATABASE_URL"] = previous_url
 
+    def test_database_url_extracts_connection_string_from_pasted_text(self):
+        previous_url = os.environ.get("DATABASE_URL")
+        try:
+            os.environ["DATABASE_URL"] = (
+                "Use this value: postgresql://user:password@db.example.com/app\\"
+            )
+            self.assertEqual(
+                main.database.database_url(),
+                "postgresql+psycopg://user:password@db.example.com/app",
+            )
+        finally:
+            if previous_url is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous_url
+
     def test_mistake_classification(self):
         self.assertEqual(main.classify_mistake("5", "4"), "off_by_one")
         self.assertEqual(main.classify_mistake("-4", "4"), "sign_error")
