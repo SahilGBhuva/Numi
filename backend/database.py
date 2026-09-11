@@ -13,7 +13,6 @@ from sqlalchemy import (
     UniqueConstraint, and_, create_engine, delete, inspect, or_, select, update,
 )
 from sqlalchemy.engine import Engine
-from sqlalchemy.pool import NullPool
 
 
 load_dotenv(Path(__file__).with_name(".env"))
@@ -129,7 +128,9 @@ def engine() -> Engine:
         if connect_args:
             kwargs["connect_args"] = connect_args
         if os.getenv("VERCEL"):
-            kwargs["poolclass"] = NullPool
+            # Keep one connection alive inside a warm serverless instance. The
+            # Supabase transaction pooler safely multiplexes these small pools.
+            kwargs.update(pool_size=1, max_overflow=1, pool_recycle=300)
     return create_engine(url, **kwargs)
 
 
