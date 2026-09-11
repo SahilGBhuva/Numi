@@ -17,12 +17,19 @@ ALLOWED_IMAGE_TYPES = {
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
-def _settings() -> tuple[str, str, str, str]:
+def public_settings() -> tuple[str, str]:
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
     anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not url or not anon_key:
+        raise HTTPException(status_code=503, detail="Accounts are not configured yet")
+    return url, anon_key
+
+
+def _settings() -> tuple[str, str, str, str]:
+    url, anon_key = public_settings()
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "student-images")
-    if not url or not anon_key or not service_key:
+    if not service_key:
         raise HTTPException(status_code=503, detail="Image storage is not configured yet")
     return url, anon_key, service_key, bucket
 
@@ -30,7 +37,7 @@ def _settings() -> tuple[str, str, str, str]:
 def authenticated_user(authorization: str | None) -> dict:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Sign in before uploading images")
-    url, anon_key, _, _ = _settings()
+    url, anon_key = public_settings()
     try:
         response = httpx.get(
             f"{url}/auth/v1/user",

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { analyzeAnswer, generateQuestion, getProgress } from '../lib/api'
 import type { AnswerResult, GeneratedQuestion, Progress, Topic } from '../lib/api'
+import { loadAuthSession, refreshAuthSession } from '../lib/auth'
+import type { AuthSession } from '../lib/auth'
 import { getStudentId } from '../lib/session'
+import { AccountPanel } from '../components/AccountPanel'
 import './Home.css'
 
 const QUESTIONS_PER_LESSON = 5
@@ -14,7 +17,9 @@ const topics: { id: Topic; label: string; icon: string; color: string }[] = [
 ]
 
 export function Home() {
-  const [studentId] = useState(() => getStudentId())
+  const [guestId] = useState(() => getStudentId())
+  const [session, setSession] = useState<AuthSession | null>(() => loadAuthSession())
+  const [accountOpen, setAccountOpen] = useState(false)
   const [topic, setTopic] = useState<Topic>('mixed')
   const [difficulty, setDifficulty] = useState(1)
   const [questionNumber, setQuestionNumber] = useState(1)
@@ -24,6 +29,8 @@ export function Home() {
   const [progress, setProgress] = useState<Progress | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const studentId = session?.user.id ?? guestId
+  const accessToken = session?.access_token
   const activeTopic = useMemo(() => topics.find((item) => item.id === topic)!, [topic])
 
   async function loadQuestion(nextTopic = topic, nextDifficulty = difficulty, nextQuestionNumber = questionNumber) {
@@ -40,16 +47,43 @@ export function Home() {
     // The initial API request intentionally seeds the first interactive challenge.
     // oxlint-disable-next-line react/set-state-in-effect
     void loadQuestion('mixed', 1)
-    void getProgress(studentId).then(setProgress).catch(() => undefined)
-  }, [studentId])
+  }, [])
+
+  useEffect(() => {
+    void getProgress(studentId, accessToken).then(setProgress).catch(() => undefined)
+  }, [studentId, accessToken])
+
+  useEffect(() => {
+    if (session) void refreshAuthSession(session).then((refreshed) => {
+      if (refreshed?.access_token !== session.access_token) {
+        setProgress(null)
+        setSession(refreshed)
+      }
+    })
+  }, [session])
+
+  function changeSession(nextSession: AuthSession | null) {
+    setProgress(null)
+    setSession(nextSession)
+  }
 
   async function submitAnswer(event: React.FormEvent) {
     event.preventDefault()
     if (!question || result) return
     setLoading(true)
     try {
-      setResult(await analyzeAnswer(question, answer, studentId))
-      setProgress(await getProgress(studentId))
+      const answerResult = await analyzeAnswer(question, answer, studentId, accessToken)
+      setResult(answerResult)
+      setProgress((current) => {
+        const attempts = (current?.attempts ?? 0) + 1
+        const correctAnswers = (current?.correct_answers ?? 0) + Number(answerResult.correct)
+        return {
+          student_id: studentId, total_xp: answerResult.total_xp, attempts,
+          correct_answers: correctAnswers, accuracy: Math.round(correctAnswers / attempts * 1000) / 10,
+          streak: answerResult.streak, best_streak: Math.max(current?.best_streak ?? 0, answerResult.streak),
+          weak_topics: current?.weak_topics ?? [],
+        }
+      })
     } catch { setError('We could not reach the tutor. Check that the backend is running.') }
     finally { setLoading(false) }
   }
@@ -67,7 +101,7 @@ export function Home() {
   return <main className="home">
     <header className="topbar">
       <a className="brand" href="#top"><span className="brand-mark">N</span><span>numi</span></a>
-      <div className="stats"><span><b>🔥</b> {streak}</span><span><b>⚡</b> {xp} XP</span><button className="avatar">S</button></div>
+      <div className="stats"><span><b>🔥</b> {streak}</span><span><b>⚡</b> {xp} XP</span><button className={`avatar ${session ? 'signed-in' : ''}`} onClick={() => setAccountOpen(true)} aria-label="Open account">{session?.user.email?.[0].toUpperCase() ?? 'S'}</button></div>
     </header>
 
     <section className="hero" id="top">
@@ -98,5 +132,10 @@ export function Home() {
       <div className="section-heading"><div><span className="eyebrow">YOUR MOMENTUM</span><h2>Today’s progress</h2></div><span className="sync-note"><i/> Saved to your profile</span></div>
       <div className="progress-grid"><article><span className="metric-icon purple">⚡</span><div><small>TOTAL XP</small><strong>{xp}</strong><p>Keep the energy going</p></div></article><article><span className="metric-icon orange">🔥</span><div><small>CURRENT STREAK</small><strong>{streak} {streak === 1 ? 'day' : 'days'}</strong><p>Come back tomorrow</p></div></article><article><span className="metric-icon teal">◎</span><div><small>ACCURACY</small><strong>{accuracy}%</strong><p>{progress?.attempts ?? 0} answers recorded</p></div></article></div>
     </section>
+    {accountOpen && <AccountPanel
+      session={session}
+      onSession={changeSession}
+      onClose={() => setAccountOpen(false)}
+    />}
   </main>
 }

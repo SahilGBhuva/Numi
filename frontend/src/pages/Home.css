@@ -5,6 +5,7 @@
 .stats { display:flex; align-items:center; gap:22px; font-weight:800; color:var(--ink); }
 .stats span { display:flex; align-items:center; gap:7px; }
 .avatar { border:0; width:39px; height:39px; border-radius:50%; color:white; font-weight:900; background:var(--ink); cursor:pointer; }
+.avatar.signed-in { background:linear-gradient(145deg,#8b6cff,#5b3ce2); box-shadow:0 7px 18px #7256ef40; }
 .hero { max-width:1180px; margin:0 auto; padding:80px 0 58px; display:grid; grid-template-columns:1.35fr .65fr; align-items:center; gap:54px; }
 .eyebrow { color:var(--purple); font-size:11px; font-weight:900; letter-spacing:2.3px; }
 .hero h1 { margin:14px 0 20px; max-width:760px; color:var(--ink); font-size:clamp(48px,6vw,82px); line-height:.95; letter-spacing:-5px; }

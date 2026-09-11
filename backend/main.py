@@ -124,6 +124,11 @@ class AccountResponse(BaseModel):
     email: str | None = None
 
 
+class AuthConfigResponse(BaseModel):
+    supabase_url: str
+    supabase_anon_key: str
+
+
 class UploadedImageResponse(BaseModel):
     id: str
     original_name: str
@@ -244,20 +249,26 @@ def health():
     return {"status": "healthy"}
 
 
-def current_account(authorization: str | None = Header(default=None)) -> dict:
+def current_account(authorization: str | None) -> dict:
     return storage.authenticated_user(authorization)
 
 
 @app.get("/api/auth/me", response_model=AccountResponse)
-def get_current_account(authorization: str | None = Header(default=None)):
+def get_current_account(authorization: Annotated[str | None, Header()] = None):
     user = current_account(authorization)
     return {"id": user["id"], "email": user.get("email")}
+
+
+@app.get("/api/auth/config", response_model=AuthConfigResponse)
+def get_auth_config():
+    url, anon_key = storage.public_settings()
+    return {"supabase_url": url, "supabase_anon_key": anon_key}
 
 
 @app.post("/api/images", response_model=UploadedImageResponse, status_code=201)
 async def upload_image(
     image: Annotated[UploadFile, File(description="JPG, PNG, WebP, or GIF up to 5 MB")],
-    authorization: str | None = Header(default=None),
+    authorization: Annotated[str | None, Header()] = None,
 ):
     user = current_account(authorization)
     uploaded = await storage.upload_private_image(user["id"], image)
@@ -266,7 +277,7 @@ async def upload_image(
 
 
 @app.get("/api/images", response_model=list[UploadedImageResponse])
-def list_images(authorization: str | None = Header(default=None)):
+def list_images(authorization: Annotated[str | None, Header()] = None):
     user = current_account(authorization)
     records = database.list_uploaded_images(user["id"])
     return [
@@ -277,11 +288,14 @@ def list_images(authorization: str | None = Header(default=None)):
 
 @app.post("/api/analyze-answer", response_model=AnswerResponse)
 @app.post("/analyze-answer", response_model=AnswerResponse, include_in_schema=False)
-def analyze_answer(data: AnswerRequest):
+def analyze_answer(data: AnswerRequest, authorization: Annotated[str | None, Header()] = None):
+    student_id = data.student_id
+    if authorization:
+        student_id = current_account(authorization)["id"]
     correct = answers_match(data.student_answer, data.correct_answer)
     mistake_type = None if correct else classify_mistake(data.student_answer, data.correct_answer)
     xp = 10 if correct else 0
-    record = update_progress(data.student_id, data.topic, correct, xp)
+    record = update_progress(student_id, data.topic, correct, xp)
 
     return AnswerResponse(
         correct=correct,
@@ -302,7 +316,9 @@ def generate_question(data: QuestionRequest):
 
 @app.get("/api/progress/{student_id}", response_model=ProgressResponse)
 @app.get("/progress/{student_id}", response_model=ProgressResponse, include_in_schema=False)
-def get_progress(student_id: str):
+def get_progress(student_id: str, authorization: Annotated[str | None, Header()] = None):
+    if authorization and current_account(authorization)["id"] != student_id:
+        raise HTTPException(status_code=403, detail="You can only view your own progress")
     record = database.get_progress(student_id)
     if record is None:
         raise HTTPException(status_code=404, detail="No progress found for this student")
