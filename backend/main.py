@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import random
 from decimal import Decimal, InvalidOperation
-from typing import Literal
+from datetime import datetime
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import database
+import storage
 
 
 app = FastAPI(
@@ -115,6 +117,20 @@ class LeaderboardEntry(BaseModel):
     total_xp: int
     streak: int
     active_today: bool
+
+
+class AccountResponse(BaseModel):
+    id: str
+    email: str | None = None
+
+
+class UploadedImageResponse(BaseModel):
+    id: str
+    original_name: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+    url: str
 
 
 def normalize_text(value: str) -> str:
@@ -226,6 +242,37 @@ def home():
 @app.get("/health", include_in_schema=False)
 def health():
     return {"status": "healthy"}
+
+
+def current_account(authorization: str | None = Header(default=None)) -> dict:
+    return storage.authenticated_user(authorization)
+
+
+@app.get("/api/auth/me", response_model=AccountResponse)
+def get_current_account(authorization: str | None = Header(default=None)):
+    user = current_account(authorization)
+    return {"id": user["id"], "email": user.get("email")}
+
+
+@app.post("/api/images", response_model=UploadedImageResponse, status_code=201)
+async def upload_image(
+    image: Annotated[UploadFile, File(description="JPG, PNG, WebP, or GIF up to 5 MB")],
+    authorization: str | None = Header(default=None),
+):
+    user = current_account(authorization)
+    uploaded = await storage.upload_private_image(user["id"], image)
+    record = database.save_uploaded_image(owner_id=user["id"], **uploaded)
+    return {**record, "url": storage.signed_image_url(record["storage_path"])}
+
+
+@app.get("/api/images", response_model=list[UploadedImageResponse])
+def list_images(authorization: str | None = Header(default=None)):
+    user = current_account(authorization)
+    records = database.list_uploaded_images(user["id"])
+    return [
+        {**record, "url": storage.signed_image_url(record["storage_path"])}
+        for record in records
+    ]
 
 
 @app.post("/api/analyze-answer", response_model=AnswerResponse)

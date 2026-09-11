@@ -64,6 +64,18 @@ friends ordered by XP, including streak and active-today status.
 Browser student IDs are suitable for the current prototype. These routes must
 use authenticated account IDs before Numi allows untrusted public signups.
 
+### Accounts and private image uploads
+
+Numi uses Supabase Auth access tokens. `GET /api/auth/me` verifies a signed-in
+user. `POST /api/images` accepts a multipart field named `image` and stores a
+private JPG, PNG, WebP, or GIF up to 5 MB. `GET /api/images` returns only the
+signed-in user's uploads, with one-hour private download links.
+
+Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and
+`SUPABASE_SERVICE_ROLE_KEY` in Vercel. Keep the service-role key backend-only;
+never put it in a `VITE_` variable or commit it. Run `supabase/schema.sql` once
+to create the metadata table and private `student-images` Storage bucket.
+
 ## Verify changes
 
 Run `python -m unittest -v test_main.py`.
@@ -79,3 +91,7 @@ string for durable production storage. Without it, the backend uses
 For Supabase, copy `.env.example` to `.env`, use the transaction pooler URI
 (port 6543) on Vercel, and run `supabase/schema.sql` in the SQL Editor. See the
 root README for the full checklist.
+
+Database schema checks are cached once per warm backend process, and answer
+updates return progress through the same transaction. This avoids the extra
+Supabase round trips that previously slowed submissions and page reloads.

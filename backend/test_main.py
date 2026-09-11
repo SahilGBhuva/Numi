@@ -116,6 +116,18 @@ class PocketTutorBackendTests(unittest.TestCase):
             main.get_progress("missing")
         self.assertEqual(context.exception.status_code, 404)
 
+    def test_uploaded_image_metadata_is_private_to_owner(self):
+        main.database.save_uploaded_image(
+            image_id="11111111-1111-1111-1111-111111111111",
+            owner_id="student-1",
+            storage_path="student-1/test.png",
+            original_name="notes.png",
+            content_type="image/png",
+            size_bytes=1234,
+        )
+        self.assertEqual(len(main.database.list_uploaded_images("student-1")), 1)
+        self.assertEqual(main.database.list_uploaded_images("student-2"), [])
+
     def test_friend_request_and_leaderboard_flow(self):
         alice = main.create_profile(main.ProfileCreate(
             student_id="alice-id", username="alice", display_name="Alice",

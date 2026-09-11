@@ -40,13 +40,40 @@ create table if not exists friendships (
   constraint uq_friend_request_direction unique (requester_id, recipient_id)
 );
 
+create table if not exists uploaded_images (
+  id uuid primary key,
+  owner_id text not null,
+  storage_path text not null unique,
+  original_name varchar(255) not null,
+  content_type varchar(100) not null,
+  size_bytes integer not null check (size_bytes > 0 and size_bytes <= 5242880),
+  created_at timestamptz not null default timezone('utc', now())
+);
+
 create index if not exists topic_progress_student_id_idx
   on topic_progress (student_id);
+
+create index if not exists uploaded_images_owner_id_idx
+  on uploaded_images (owner_id, created_at desc);
 
 alter table student_progress enable row level security;
 alter table topic_progress enable row level security;
 alter table profiles enable row level security;
 alter table friendships enable row level security;
+alter table uploaded_images enable row level security;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'student-images',
+  'student-images',
+  false,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 -- Intentionally no policies for anon/authenticated.
 -- Backend access uses DATABASE_URL (postgres role), not the anon key.

@@ -61,6 +61,17 @@ friendships = Table(
     UniqueConstraint("requester_id", "recipient_id", name="uq_friend_request_direction"),
 )
 
+uploaded_images = Table(
+    "uploaded_images", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("owner_id", String(100), nullable=False, index=True),
+    Column("storage_path", String(500), nullable=False, unique=True),
+    Column("original_name", String(255), nullable=False),
+    Column("content_type", String(100), nullable=False),
+    Column("size_bytes", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 
 def sqlite_path() -> Path:
     configured_path = os.getenv("POCKET_TUTOR_DB_PATH")
@@ -122,7 +133,9 @@ def engine() -> Engine:
     return create_engine(url, **kwargs)
 
 
+@lru_cache(maxsize=1)
 def init_db() -> None:
+    """Create/check tables once per warm process instead of on every request."""
     active_engine = engine()
     metadata.create_all(active_engine)
     if active_engine.dialect.name == "sqlite":
@@ -197,9 +210,67 @@ def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict
                 )
             )
 
-    record = get_progress(student_id)
-    assert record is not None
-    return record
+        updated = connection.execute(
+            select(student_progress).where(student_progress.c.student_id == student_id)
+        ).mappings().one()
+        topics = connection.execute(
+            select(topic_progress).where(topic_progress.c.student_id == student_id)
+        ).mappings().all()
+
+    return {
+        "student_id": updated["student_id"],
+        "total_xp": updated["total_xp"],
+        "attempts": updated["attempts"],
+        "correct_answers": updated["correct_answers"],
+        "streak": updated["streak"],
+        "best_streak": updated["best_streak"],
+        "topics": {
+            row["topic"]: {"attempts": row["attempts"], "correct": row["correct_answers"]}
+            for row in topics
+        },
+    }
+
+
+def save_uploaded_image(
+    image_id: str,
+    owner_id: str,
+    storage_path: str,
+    original_name: str,
+    content_type: str,
+    size_bytes: int,
+) -> dict:
+    init_db()
+    created_at = datetime.now(timezone.utc)
+    with engine().begin() as connection:
+        connection.execute(uploaded_images.insert().values(
+            id=image_id,
+            owner_id=owner_id,
+            storage_path=storage_path,
+            original_name=original_name,
+            content_type=content_type,
+            size_bytes=size_bytes,
+            created_at=created_at,
+        ))
+    return {
+        "id": image_id,
+        "owner_id": owner_id,
+        "storage_path": storage_path,
+        "original_name": original_name,
+        "content_type": content_type,
+        "size_bytes": size_bytes,
+        "created_at": created_at,
+    }
+
+
+def list_uploaded_images(owner_id: str) -> list[dict]:
+    init_db()
+    with engine().connect() as connection:
+        rows = connection.execute(
+            select(uploaded_images)
+            .where(uploaded_images.c.owner_id == owner_id)
+            .order_by(uploaded_images.c.created_at.desc())
+        ).mappings().all()
+    return [dict(row) for row in rows]
 
 
 def get_progress(student_id: str) -> dict | None:
@@ -356,6 +427,7 @@ def reset_db() -> None:
     if active_engine.dialect.name != "sqlite":
         raise RuntimeError("reset_db is only available for local SQLite databases")
     with active_engine.begin() as connection:
+        connection.execute(delete(uploaded_images))
         connection.execute(delete(friendships))
         connection.execute(delete(profiles))
         connection.execute(delete(topic_progress))
