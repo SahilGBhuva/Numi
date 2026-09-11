@@ -45,6 +45,7 @@ export type NoteDeposit = {
 export type Course = {
   name: string
   units: string[]
+  tone?: string
 }
 
 export type Notebook = {

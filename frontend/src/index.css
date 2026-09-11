@@ -1,10 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Outfit:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
 
 :root {
-  --ink: #241910;
-  --muted: #7a6a5c;
-  --wash: #f3e6d4;
-  --paper: #f7f0e4;
+  --ink: #e8dfb0;
+  --muted: #b8af82;
+  --wash: #08121e;
+  --paper: #07111c;
+  --surface: #0a1626;
+  --surface-2: #0e1e32;
+  --raised: #14304a;
+  --glass: rgba(120, 128, 140, 0.22);
   --ochre: #e0a045;
   --coral: #d36b4f;
   --sage: #6f9a7a;
@@ -12,9 +16,9 @@
   font-family: 'Outfit', system-ui, sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(ellipse at 12% 8%, #f8d9c8 0, transparent 36%),
-    radial-gradient(ellipse at 88% 0%, #d9e7d6 0, transparent 32%),
-    radial-gradient(ellipse at 70% 90%, #efe0c4 0, transparent 40%),
+    radial-gradient(ellipse at 12% 8%, #102438 0, transparent 36%),
+    radial-gradient(ellipse at 88% 0%, #0c1c30 0, transparent 32%),
+    radial-gradient(ellipse at 70% 90%, #0a1828 0, transparent 40%),
     var(--paper);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -33,8 +37,27 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.22;
+  opacity: 0.18;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+  animation: grain-shift 14s ease-in-out infinite;
 }
-button, input, select { font-family: inherit; }
-h1, h2, h3, strong { font-family: 'Fraunces', Georgia, serif; }
+
+@keyframes grain-shift {
+  0%,
+  100% {
+    opacity: 0.14;
+  }
+  50% {
+    opacity: 0.22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
+}
+button, input, select {
+  font-family: inherit;
+  color: inherit;
+}

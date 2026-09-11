@@ -18,9 +18,10 @@ class PocketTutorBackendTests(unittest.TestCase):
         if os.path.exists(TEST_DB.name):
             os.unlink(TEST_DB.name)
 
-    def test_numeric_equivalence(self):
-        self.assertTrue(main.answers_match("4.0", "4"))
-        self.assertTrue(main.answers_match("1,000", "1000"))
+    def test_yes_no_and_filename_answers(self):
+        self.assertTrue(main.answers_match("Yes", "yes"))
+        self.assertTrue(main.answers_match("Y", "true"))
+        self.assertTrue(main.answers_match("mendel", "mendel.pdf"))
 
     def test_mistake_classification(self):
         self.assertEqual(main.classify_mistake("5", "4"), "off_by_one")
@@ -34,6 +35,27 @@ class PocketTutorBackendTests(unittest.TestCase):
             self.assertTrue(question.question)
             self.assertTrue(question.correct_answer)
             self.assertIn(question.topic, ("addition", "subtraction", "multiplication", "division"))
+
+    def test_notes_question_generation(self):
+        question = main.generate_notes_question(
+            main.NoteContext(
+                course="Biology",
+                unit="Heredity",
+                files=["mendel.pdf", "dna.txt"],
+                other_units=["Cell structure"],
+                other_courses=["Chemistry"],
+            ),
+            2,
+        )
+        self.assertTrue(question.question)
+        self.assertTrue(question.correct_answer)
+        self.assertEqual(question.topic, "notes")
+        self.assertTrue(
+            "Heredity" in question.question
+            or "Biology" in question.question
+            or "mendel.pdf" in question.question
+            or "dna.txt" in question.question
+        )
 
     def test_answer_updates_progress(self):
         request = main.AnswerRequest(

@@ -50,9 +50,18 @@ class AnswerResponse(BaseModel):
     streak: int
 
 
+class NoteContext(BaseModel):
+    course: str = ""
+    unit: str = ""
+    files: list[str] = Field(default_factory=list)
+    other_units: list[str] = Field(default_factory=list)
+    other_courses: list[str] = Field(default_factory=list)
+
+
 class QuestionRequest(BaseModel):
     topic: Topic = "mixed"
     difficulty: int = Field(default=1, ge=1, le=3)
+    notes: NoteContext | None = None
 
 
 class QuestionResponse(BaseModel):
@@ -87,11 +96,27 @@ def parse_number(value: str) -> Decimal | None:
         return None
 
 
+def truthy_alias(value: str) -> str:
+    aliases = {"yes": "true", "y": "true", "true": "true", "no": "false", "n": "false", "false": "false"}
+    return aliases.get(normalize_text(value), normalize_text(value))
+
+
+def file_stem(value: str) -> str:
+    text = normalize_text(value)
+    if "." in text:
+        return text.rsplit(".", 1)[0]
+    return text
+
+
 def answers_match(student_answer: str, correct_answer: str) -> bool:
     student_number = parse_number(student_answer)
     correct_number = parse_number(correct_answer)
     if student_number is not None and correct_number is not None:
         return student_number == correct_number
+    if truthy_alias(student_answer) == truthy_alias(correct_answer):
+        return True
+    if file_stem(student_answer) == file_stem(correct_answer) and file_stem(correct_answer):
+        return True
     return normalize_text(student_answer) == normalize_text(correct_answer)
 
 
@@ -124,8 +149,11 @@ def make_hint(question: str, mistake_type: str) -> str:
         "calculation_error": "Break the calculation into smaller steps and check each one.",
         "concept_or_format_error": "Try expressing the answer as a single number or a simpler equivalent form.",
     }
+    lowered = question.lower()
+    if any(word in lowered for word in ("notes", "unit", "course", "file", "deposited")):
+        return "Look at the notes you deposited in this unit — the file names, course, and unit are the answers."
     base_hint = hints[mistake_type]
-    if "/" in question or "divide" in question.lower():
+    if "/" in question or "divide" in lowered:
         return base_hint + " Remember: division asks how many equal groups can be made."
     if "*" in question or "×" in question:
         return base_hint + " You can check multiplication with repeated addition."
@@ -169,6 +197,37 @@ def generate_math_question(topic: Topic, difficulty: int) -> QuestionResponse:
     )
 
 
+def generate_notes_question(notes: NoteContext, difficulty: int) -> QuestionResponse:
+    files = [name.strip() for name in notes.files if name.strip()]
+    if not files:
+        return generate_math_question("mixed", difficulty)
+
+    file_name = random.choice(files)
+    unit = notes.unit.strip() or "this unit"
+    course = notes.course.strip() or "this course"
+    other_units = [name for name in notes.other_units if name.strip() and name.strip() != unit]
+    other_courses = [name for name in notes.other_courses if name.strip() and name.strip() != course]
+
+    pool: list[tuple[str, str]] = [
+        (f'Which unit holds the notes file “{file_name}”?', unit),
+        (f'Which course are the notes “{file_name}” saved in?', course),
+        (f'How many note files are deposited in {unit}?', str(len(files))),
+        (f'Is “{file_name}” deposited in {unit}? (yes/no)', "yes"),
+        (f'Type the name of a notes file in {unit}.', file_name),
+    ]
+    if other_units:
+        wrong_unit = random.choice(other_units)
+        pool.append((f'Are the notes “{file_name}” in {wrong_unit}? (yes/no)', "no"))
+    if other_courses:
+        wrong_course = random.choice(other_courses)
+        pool.append((f'Are the notes “{file_name}” from {wrong_course}? (yes/no)', "no"))
+    if len(files) > 1 and difficulty >= 2:
+        pool.append((f'How many notes besides “{file_name}” are in {unit}?', str(len(files) - 1)))
+
+    question, answer = random.choice(pool)
+    return QuestionResponse(question=question, correct_answer=str(answer), topic="notes", difficulty=difficulty)
+
+
 @app.get("/")
 def home():
     return {
@@ -206,6 +265,8 @@ def analyze_answer(data: AnswerRequest):
 @app.post("/api/generate-question", response_model=QuestionResponse)
 @app.post("/generate-question", response_model=QuestionResponse, include_in_schema=False)
 def generate_question(data: QuestionRequest):
+    if data.notes and data.notes.files:
+        return generate_notes_question(data.notes, data.difficulty)
     return generate_math_question(data.topic, data.difficulty)
 
 
