@@ -50,9 +50,9 @@ export function AccountPanel({ session, onSession, onClose }: Props) {
   function logout() { signOut(); onSession(null); setImages([]); setMessage('Signed out.') }
 
   return <div className="account-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="account-panel" role="dialog" aria-modal="true" aria-label="Your Numi account" onMouseDown={(event) => event.stopPropagation()}>
+    <section className="account-panel" role="dialog" aria-modal="true" aria-label="Your Bindit account" onMouseDown={(event) => event.stopPropagation()}>
       <button className="account-close" onClick={onClose} aria-label="Close">×</button>
-      <span className="eyebrow">YOUR NUMI SPACE</span>
+      <span className="eyebrow">YOUR BINDIT SPACE</span>
       {session ? <>
         <h2>Welcome back.</h2><p className="account-email">{session.user.email}</p>
         <label className={`upload-card ${busy ? 'disabled' : ''}`}>

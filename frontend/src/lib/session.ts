@@ -1,11 +1,16 @@
 import type { Session } from './types'
 
 const STORAGE_KEY = 'cac-study-session'
-const STUDENT_ID_KEY = 'numi-student-id'
+const STUDENT_ID_KEY = 'bindit-student-id'
+const LEGACY_STUDENT_ID_KEY = 'numi-student-id'
 
 export function getStudentId(): string {
-  const savedId = localStorage.getItem(STUDENT_ID_KEY)
-  if (savedId) return savedId
+  const savedId = localStorage.getItem(STUDENT_ID_KEY) ?? localStorage.getItem(LEGACY_STUDENT_ID_KEY)
+  if (savedId) {
+    localStorage.setItem(STUDENT_ID_KEY, savedId)
+    localStorage.removeItem(LEGACY_STUDENT_ID_KEY)
+    return savedId
+  }
 
   const studentId = crypto.randomUUID()
   localStorage.setItem(STUDENT_ID_KEY, studentId)

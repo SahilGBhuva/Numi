@@ -100,7 +100,7 @@ export function Home() {
 
   return <main className="home">
     <header className="topbar">
-      <a className="brand" href="#top"><span className="brand-mark">N</span><span>numi</span></a>
+      <a className="brand" href="#top"><span className="brand-mark">B</span><span>bindit</span></a>
       <div className="stats"><span><b>🔥</b> {streak}</span><span><b>⚡</b> {xp} XP</span><button className={`avatar ${session ? 'signed-in' : ''}`} onClick={() => setAccountOpen(true)} aria-label="Open account">{session?.user.email?.[0].toUpperCase() ?? 'S'}</button></div>
     </header>
 

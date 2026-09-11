@@ -1,6 +1,6 @@
-# Numi
+# Bindit
 
-Group repo for numi: a polished Vite React learning experience, a
+Group repo for Bindit: a polished Vite React learning experience, a
 FastAPI tutoring API, and persistent SQLite progress storage.
 
 ## Folders

@@ -8,7 +8,8 @@ export type AuthSession = {
 
 type AuthConfig = { supabase_url: string; supabase_anon_key: string }
 
-const SESSION_KEY = 'numi-auth-session'
+const SESSION_KEY = 'bindit-auth-session'
+const LEGACY_SESSION_KEY = 'numi-auth-session'
 let configPromise: Promise<AuthConfig> | null = null
 
 function config() {
@@ -20,15 +21,26 @@ function config() {
 }
 
 export function loadAuthSession(): AuthSession | null {
-  const raw = localStorage.getItem(SESSION_KEY)
+  const raw = localStorage.getItem(SESSION_KEY) ?? localStorage.getItem(LEGACY_SESSION_KEY)
   if (!raw) return null
-  try { return JSON.parse(raw) as AuthSession }
-  catch { localStorage.removeItem(SESSION_KEY); return null }
+  try {
+    const session = JSON.parse(raw) as AuthSession
+    localStorage.setItem(SESSION_KEY, raw)
+    localStorage.removeItem(LEGACY_SESSION_KEY)
+    return session
+  } catch {
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(LEGACY_SESSION_KEY)
+    return null
+  }
 }
 
 export function saveAuthSession(session: AuthSession | null) {
   if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session))
-  else localStorage.removeItem(SESSION_KEY)
+  else {
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(LEGACY_SESSION_KEY)
+  }
 }
 
 async function authRequest(path: string, body: Record<string, string>) {

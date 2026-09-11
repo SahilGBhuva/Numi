@@ -14,7 +14,7 @@ import storage
 
 
 app = FastAPI(
-    title="Pocket Tutor API",
+    title="Bindit API",
     version="0.2.0",
     description="Math practice, feedback, hints, and lightweight progress tracking.",
 )
@@ -237,7 +237,7 @@ def generate_math_question(topic: Topic, difficulty: int) -> QuestionResponse:
 @app.get("/")
 def home():
     return {
-        "message": "Pocket Tutor backend is running",
+        "message": "Bindit backend is running",
         "version": app.version,
         "docs": "/docs",
     }

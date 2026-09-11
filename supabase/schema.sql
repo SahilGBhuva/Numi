@@ -1,4 +1,4 @@
--- Numi schema for Supabase Postgres.
+-- Bindit schema for Supabase Postgres.
 -- Run this in the Supabase SQL Editor (Project → SQL Editor → New query).
 -- The FastAPI backend uses the database password (postgres role), which
 -- bypasses Row Level Security. RLS is enabled with no public policies so

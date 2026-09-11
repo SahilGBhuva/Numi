@@ -1,4 +1,4 @@
-# Pocket Tutor Backend
+# Bindit Backend
 
 This service connects the student experience, tutor logic, and progress dashboard through one API.
 
@@ -62,11 +62,11 @@ body contains `recipient_id` and `accept`.
 friends ordered by XP, including streak and active-today status.
 
 Browser student IDs are suitable for the current prototype. These routes must
-use authenticated account IDs before Numi allows untrusted public signups.
+use authenticated account IDs before Bindit allows untrusted public signups.
 
 ### Accounts and private image uploads
 
-Numi uses Supabase Auth access tokens. `GET /api/auth/me` verifies a signed-in
+Bindit uses Supabase Auth access tokens. `GET /api/auth/me` verifies a signed-in
 user. `POST /api/images` accepts a multipart field named `image` and stores a
 private JPG, PNG, WebP, or GIF up to 5 MB. `GET /api/images` returns only the
 signed-in user's uploads, with one-hour private download links.
