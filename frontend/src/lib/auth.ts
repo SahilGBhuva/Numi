@@ -1,4 +1,4 @@
-export type AuthUser = { id: string; email?: string }
+export type AuthUser = { id: string; email?: string; user_metadata?: { username?: string; [key: string]: unknown } }
 export type AuthSession = {
   access_token: string
   refresh_token: string
@@ -81,6 +81,24 @@ export async function signIn(email: string, password: string) {
   if (!session) throw new Error('Could not create a login session.')
   saveAuthSession(session)
   return session
+}
+
+export async function updateUsername(session: AuthSession, username: string): Promise<AuthSession> {
+  const settings = await config()
+  const response = await fetch(`${settings.supabase_url}/auth/v1/user`, {
+    method: 'PUT',
+    headers: {
+      apikey: settings.supabase_anon_key,
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ data: { username } }),
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data.msg ?? data.error_description ?? data.message ?? 'Could not update your username.')
+  const nextSession: AuthSession = { ...session, user: { ...session.user, ...data } }
+  saveAuthSession(nextSession)
+  return nextSession
 }
 
 export function signOut() {

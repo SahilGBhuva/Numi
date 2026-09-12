@@ -69,3 +69,47 @@
     grid-template-columns: 1fr;
   }
 }
+
+.board__username-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.board__username-display p {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.board__username-display button,
+.board__username-actions button {
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 6px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.board__username-form {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.board__username-form input {
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 16px;
+}
+
+.board__username-actions {
+  display: flex;
+  gap: 8px;
+}
