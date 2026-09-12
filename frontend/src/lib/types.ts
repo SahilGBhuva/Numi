@@ -41,6 +41,7 @@ export type NoteDeposit = {
   fileName: string
   createdAt: string
   status?: 'ready'
+  textPreview?: string
 }
 
 export type Course = {

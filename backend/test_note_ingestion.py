@@ -91,6 +91,17 @@ class NoteIngestionTests(unittest.TestCase):
                 main.get_note(saved["id"], "Bearer test")
         self.assertEqual(raised.exception.status_code, 404)
 
+    def test_note_delete_enforces_ownership(self):
+        saved = note_store.save_note("student-a", "History", "Rome", "rome.txt", "text/plain", "Republic", 8)
+        with patch.object(main.auth, "authenticated_user", return_value={"id": "student-b"}):
+            with self.assertRaises(HTTPException) as raised:
+                main.delete_note(saved["id"], "Bearer test")
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertIsNotNone(note_store.get_note("student-a", saved["id"]))
+        with patch.object(main.auth, "authenticated_user", return_value={"id": "student-a"}):
+            self.assertEqual(main.delete_note(saved["id"], "Bearer test"), {"deleted": True})
+        self.assertIsNone(note_store.get_note("student-a", saved["id"]))
+
 
 if __name__ == "__main__":
     unittest.main()
