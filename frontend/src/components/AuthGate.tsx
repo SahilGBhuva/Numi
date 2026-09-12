@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { loadAuthSession, refreshAuthSession, signIn, signOut, signUp, type AuthSession } from '../lib/auth'
 import './AuthGate.css'
+import '../Brand.css'
 
 type Mode = 'login' | 'signup'
 
 function BrandMark() {
   return (
     <div className="auth-brand-mark" aria-hidden="true">
-      <span />
-      <span />
-      <span />
+      <img src="/bindit-mascot.webp" alt="" />
     </div>
   )
 }
@@ -98,17 +97,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
               <h1>Turn scattered studying into connected understanding.</h1>
               <p>Build momentum, connect ideas, and keep everything you learn in one place.</p>
             </div>
-            <div className="auth-preview-card">
-              <div className="auth-preview-top">
-                <span className="auth-preview-dot" />
-                <span>Today’s progress</span>
-              </div>
-              <strong>3 concepts connected</strong>
-              <div className="auth-progress-track"><span /></div>
-              <div className="auth-preview-tags">
-                <span>Functions</span>
-                <span>Vectors</span>
-                <span>Biology</span>
+            <div className="auth-preview-card auth-preview-card--brand">
+              <img className="auth-preview-mascot" src="/bindit-mascot.webp" alt="Bindit otter mascot" />
+              <div className="auth-preview-content">
+                <div className="auth-preview-top">
+                  <span className="auth-preview-dot" />
+                  <span>Today’s progress</span>
+                </div>
+                <strong>3 concepts connected</strong>
+                <div className="auth-progress-track"><span /></div>
+                <div className="auth-preview-tags">
+                  <span>Functions</span>
+                  <span>Vectors</span>
+                  <span>Biology</span>
+                </div>
               </div>
             </div>
           </aside>
