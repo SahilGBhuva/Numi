@@ -11,6 +11,7 @@ import { Settings } from './pages/Settings'
 import { More } from './pages/More'
 import './pages/Home.css'
 import './App.css'
+import './pages/HomeProportions.css'
 
 function currentScreen(): Screen {
   const hash = window.location.hash.replace('#', '') as Screen
