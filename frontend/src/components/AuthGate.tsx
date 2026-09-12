@@ -1,16 +1,38 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { loadAuthSession, refreshAuthSession, signIn, signOut, signUp, type AuthSession } from '../lib/auth'
 import './AuthGate.css'
+
+type Mode = 'login' | 'signup'
+
+function BrandMark() {
+  return (
+    <div className="auth-brand-mark" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </div>
+  )
+}
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(loadAuthSession())
   const [loading, setLoading] = useState(Boolean(session))
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+
+  const passwordScore = useMemo(() => {
+    let score = 0
+    if (password.length >= 8) score += 1
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1
+    if (/\d/.test(password)) score += 1
+    if (/[^A-Za-z0-9]/.test(password)) score += 1
+    return score
+  }, [password])
 
   useEffect(() => {
     if (!session) return setLoading(false)
@@ -20,7 +42,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  if (loading) return <div className="auth-screen"><p>Loading Bindit…</p></div>
+  function switchMode(nextMode: Mode) {
+    setMode(nextMode)
+    setError('')
+    setMessage('')
+    setPassword('')
+    setShowPassword(false)
+  }
+
+  if (loading) {
+    return (
+      <main className="auth-screen auth-loading-screen">
+        <div className="auth-loading-orb" aria-hidden="true" />
+        <p>Opening Bindit…</p>
+      </main>
+    )
+  }
 
   if (!session) {
     async function submit(event: FormEvent) {
@@ -28,16 +65,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setBusy(true)
       setError('')
       setMessage('')
+
       try {
         if (mode === 'login') {
           setSession(await signIn(email.trim(), password))
         } else {
+          if (password.length < 8) {
+            setError('Use at least 8 characters for your password.')
+            return
+          }
           const result = await signUp(email.trim(), password)
           if (result.session) setSession(result.session)
-          else setMessage('Check your email to confirm your account, then log in.')
+          else setMessage('You’re almost in — check your email to confirm your account, then log in.')
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Account request failed.')
+        setError(err instanceof Error ? err.message : 'We couldn’t complete that request. Try again.')
       } finally {
         setBusy(false)
       }
@@ -45,18 +87,114 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
     return (
       <main className="auth-screen">
-        <form className="auth-card" onSubmit={submit}>
-          <h1>Bindit</h1>
-          <p>{mode === 'login' ? 'Welcome back.' : 'Create your account.'}</p>
-          <label>Email<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-          <label>Password<input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-          {error ? <p className="auth-error">{error}</p> : null}
-          {message ? <p className="auth-message">{message}</p> : null}
-          <button type="submit" disabled={busy}>{busy ? 'Working…' : mode === 'login' ? 'Log in' : 'Sign up'}</button>
-          <button className="auth-switch" type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setMessage('') }}>
-            {mode === 'login' ? 'Need an account? Sign up' : 'Already have an account? Log in'}
-          </button>
-        </form>
+        <section className="auth-shell">
+          <aside className="auth-story">
+            <div className="auth-brand-row">
+              <BrandMark />
+              <span>Bindit</span>
+            </div>
+            <div className="auth-story-copy">
+              <span className="auth-eyebrow">Study smarter, consistently.</span>
+              <h1>Turn scattered studying into connected understanding.</h1>
+              <p>Build momentum, connect ideas, and keep everything you learn in one place.</p>
+            </div>
+            <div className="auth-preview-card">
+              <div className="auth-preview-top">
+                <span className="auth-preview-dot" />
+                <span>Today’s progress</span>
+              </div>
+              <strong>3 concepts connected</strong>
+              <div className="auth-progress-track"><span /></div>
+              <div className="auth-preview-tags">
+                <span>Functions</span>
+                <span>Vectors</span>
+                <span>Biology</span>
+              </div>
+            </div>
+          </aside>
+
+          <section className="auth-panel">
+            <div className="auth-mobile-brand">
+              <BrandMark />
+              <span>Bindit</span>
+            </div>
+
+            <div className="auth-panel-inner">
+              <div className="auth-heading">
+                <span className="auth-kicker">{mode === 'login' ? 'Welcome back' : 'Start your learning system'}</span>
+                <h2>{mode === 'login' ? 'Log in to Bindit' : 'Create your account'}</h2>
+                <p>{mode === 'login' ? 'Pick up right where you left off.' : 'A few seconds now, a much better study flow later.'}</p>
+              </div>
+
+              <div className="auth-segmented" role="tablist" aria-label="Authentication mode">
+                <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} disabled={busy} onClick={() => switchMode('login')}>Log in</button>
+                <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'active' : ''} disabled={busy} onClick={() => switchMode('signup')}>Sign up</button>
+              </div>
+
+              <form className="auth-form" onSubmit={submit}>
+                <label>
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    required
+                    disabled={busy}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </label>
+
+                <label>
+                  <span>Password</span>
+                  <div className="auth-password-wrap">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                      minLength={mode === 'signup' ? 8 : 6}
+                      placeholder={mode === 'signup' ? 'At least 8 characters' : 'Enter your password'}
+                      required
+                      disabled={busy}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <button className="auth-show-password" type="button" disabled={busy} aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((value) => !value)}>
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </label>
+
+                {mode === 'signup' && password ? (
+                  <div className="auth-strength" aria-live="polite">
+                    <div className="auth-strength-bars">
+                      {[0, 1, 2, 3].map((index) => <span key={index} className={index < passwordScore ? 'filled' : ''} />)}
+                    </div>
+                    <small>{passwordScore <= 1 ? 'Make it stronger' : passwordScore === 2 ? 'Good password' : 'Strong password'}</small>
+                  </div>
+                ) : null}
+
+                {error ? <div className="auth-feedback auth-error" role="alert">{error}</div> : null}
+                {message ? <div className="auth-feedback auth-message" role="status">{message}</div> : null}
+
+                <button className="auth-primary" type="submit" disabled={busy}>
+                  {busy ? <><span className="auth-spinner" aria-hidden="true" />Working…</> : mode === 'login' ? 'Log in' : 'Create account'}
+                </button>
+
+                <p className="auth-terms">
+                  {mode === 'signup' ? 'By creating an account, you agree to use Bindit responsibly.' : 'Your progress stays connected to your account.'}
+                </p>
+              </form>
+
+              <p className="auth-switch-copy">
+                {mode === 'login' ? 'New to Bindit?' : 'Already have an account?'}{' '}
+                <button type="button" disabled={busy} onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}>
+                  {mode === 'login' ? 'Create an account' : 'Log in'}
+                </button>
+              </p>
+            </div>
+          </section>
+        </section>
       </main>
     )
   }

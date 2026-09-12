@@ -7,13 +7,14 @@ export type AuthSession = {
 }
 
 type AuthConfig = { supabase_url: string; supabase_anon_key: string }
-type AuthResponse = Partial<AuthSession> & { user?: AuthUser }
+type AuthResponse = Partial<AuthSession> & { expires_in?: number; user?: AuthUser }
 
 const SESSION_KEY = 'bindit-auth-session'
+const API_URL = import.meta.env.VITE_API_URL ?? ''
 let configPromise: Promise<AuthConfig> | null = null
 
 function config() {
-  configPromise ??= fetch('/api/auth/config').then(async (response) => {
+  configPromise ??= fetch(`${API_URL}/api/auth/config`).then(async (response) => {
     if (!response.ok) throw new Error('Accounts are not configured yet.')
     return response.json() as Promise<AuthConfig>
   })
@@ -52,7 +53,8 @@ async function authRequest(path: string, body: Record<string, string>): Promise<
 
 function asSession(data: AuthResponse): AuthSession | null {
   if (!data.access_token || !data.refresh_token || !data.user?.id) return null
-  return data as AuthSession
+  const expiresAt = data.expires_at ?? (data.expires_in ? Math.floor(Date.now() / 1000) + data.expires_in : undefined)
+  return { ...data, expires_at: expiresAt, access_token: data.access_token, refresh_token: data.refresh_token, user: data.user }
 }
 
 export async function refreshAuthSession(session: AuthSession): Promise<AuthSession | null> {
@@ -82,5 +84,13 @@ export async function signIn(email: string, password: string) {
 }
 
 export function signOut() {
+  const session = loadAuthSession()
   saveAuthSession(null)
+  if (!session) return
+  void config()
+    .then((settings) => fetch(`${settings.supabase_url}/auth/v1/logout`, {
+      method: 'POST',
+      headers: { apikey: settings.supabase_anon_key, Authorization: `Bearer ${session.access_token}` },
+    }))
+    .catch(() => undefined)
 }
