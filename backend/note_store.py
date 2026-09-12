@@ -41,7 +41,8 @@ def save_note(student_id: str, course: str, unit: str, file_name: str, content_t
     return row
 
 
-def context_for(student_id: str, course: str, unit: str, limit_chars: int = 18_000) -> tuple[list[str], str]:
+def context_for(student_id: str, course: str, unit: str, limit_chars: int = 8_000) -> tuple[list[str], str]:
+    """Return a compact recent-note context so interactive AI requests stay fast."""
     init_notes()
     with database.engine().begin() as connection:
         rows = connection.execute(
