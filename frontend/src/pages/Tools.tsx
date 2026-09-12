@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
-import { analyzeAnswer, generateQuestion, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
+import { analyzeAnswer, generateQuestion, ingestNote, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
 import { recordUnitAttempt } from '../lib/progress'
 import {
   fileToCourseImageDataUrl,
@@ -607,7 +607,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
           ? {
               course: activeCourse,
               unit: activeUnit,
-              files: unitNotes.map((note) => note.fileName),
+              files: unitNotes.map((note) => `${note.id}::${note.fileName}`),
               other_units: units.filter((name) => name !== activeUnit),
               other_courses: courses.map((course) => course.name).filter((name) => name !== activeCourse),
             }
@@ -641,24 +641,31 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     }
   }
 
-  function sendUpload(event: FormEvent) {
+  async function sendUpload(event: FormEvent) {
     event.preventDefault()
     if (!file) return
     if (!activeUnit) {
       setNotice(`Create a unit in ${activeCourse} first, then send your notes there.`)
       return
     }
-    const deposit: NoteDeposit = {
-      id: crypto.randomUUID(),
-      course: activeCourse,
-      unit: activeUnit,
-      fileName: file.name,
-      createdAt: new Date().toISOString(),
+    const selected = file
+    setNotice(`Scanning “${selected.name}”…`)
+    try {
+      const uploaded = await ingestNote(selected, activeCourse, activeUnit, accessToken)
+      const deposit: NoteDeposit = {
+        id: uploaded.id,
+        course: activeCourse,
+        unit: activeUnit,
+        fileName: uploaded.file_name,
+        createdAt: new Date().toISOString(),
+      }
+      setNotebook((current) => ({ ...current, deposits: [deposit, ...current.deposits] }))
+      setFile(null)
+      if (fileInput.current) fileInput.current.value = ''
+      setNotice(`Scanned “${deposit.fileName}” — quizzes now use these notes.`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not scan those notes.')
     }
-    setNotebook((current) => ({ ...current, deposits: [deposit, ...current.deposits] }))
-    setFile(null)
-    if (fileInput.current) fileInput.current.value = ''
-    setNotice(`Saved “${deposit.fileName}” to ${activeCourse} → ${activeUnit}.`)
   }
 
   return (
