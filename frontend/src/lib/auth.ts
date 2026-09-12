@@ -7,6 +7,7 @@ export type AuthSession = {
 }
 
 type AuthConfig = { supabase_url: string; supabase_anon_key: string }
+type AuthResponse = Partial<AuthSession> & { user?: AuthUser }
 
 const SESSION_KEY = 'bindit-auth-session'
 let configPromise: Promise<AuthConfig> | null = null
@@ -23,7 +24,9 @@ export function loadAuthSession(): AuthSession | null {
   const raw = localStorage.getItem(SESSION_KEY)
   if (!raw) return null
   try {
-    return JSON.parse(raw) as AuthSession
+    const session = JSON.parse(raw) as AuthSession
+    if (!session.access_token || !session.refresh_token || !session.user?.id) throw new Error('Invalid session')
+    return session
   } catch {
     localStorage.removeItem(SESSION_KEY)
     return null
@@ -35,7 +38,7 @@ export function saveAuthSession(session: AuthSession | null) {
   else localStorage.removeItem(SESSION_KEY)
 }
 
-async function authRequest(path: string, body: Record<string, string>) {
+async function authRequest(path: string, body: Record<string, string>): Promise<AuthResponse> {
   const settings = await config()
   const response = await fetch(`${settings.supabase_url}/auth/v1/${path}`, {
     method: 'POST',
@@ -44,13 +47,18 @@ async function authRequest(path: string, body: Record<string, string>) {
   })
   const data = await response.json()
   if (!response.ok) throw new Error(data.msg ?? data.error_description ?? data.message ?? 'Account request failed.')
+  return data as AuthResponse
+}
+
+function asSession(data: AuthResponse): AuthSession | null {
+  if (!data.access_token || !data.refresh_token || !data.user?.id) return null
   return data as AuthSession
 }
 
 export async function refreshAuthSession(session: AuthSession): Promise<AuthSession | null> {
   if (session.expires_at && session.expires_at > Date.now() / 1000 + 60) return session
   try {
-    const refreshed = await authRequest('token?grant_type=refresh_token', { refresh_token: session.refresh_token })
+    const refreshed = asSession(await authRequest('token?grant_type=refresh_token', { refresh_token: session.refresh_token }))
     saveAuthSession(refreshed)
     return refreshed
   } catch {
@@ -60,13 +68,15 @@ export async function refreshAuthSession(session: AuthSession): Promise<AuthSess
 }
 
 export async function signUp(email: string, password: string) {
-  const session = await authRequest('signup', { email, password })
+  const data = await authRequest('signup', { email, password })
+  const session = asSession(data)
   saveAuthSession(session)
-  return session
+  return { session, needsConfirmation: !session }
 }
 
 export async function signIn(email: string, password: string) {
-  const session = await authRequest('token?grant_type=password', { email, password })
+  const session = asSession(await authRequest('token?grant_type=password', { email, password }))
+  if (!session) throw new Error('Could not create a login session.')
   saveAuthSession(session)
   return session
 }
