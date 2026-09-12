@@ -1,0 +1,225 @@
+/* Desktop proportion pass: keeps the existing visual language while making the
+   home screen use the available canvas more intentionally. */
+@media (min-width: 861px) {
+  .sheet {
+    --banner-width: clamp(440px, 42vw, 560px);
+    --sidebar-width: 196px;
+    --page-width: 1320px;
+    --camera-size: 170px;
+
+    width: min(var(--page-width), calc(100% - 48px));
+    padding: 22px 0 40px;
+  }
+
+  .sheet__top {
+    grid-template-columns: minmax(0, var(--banner-width)) 62px;
+    gap: 24px;
+    margin-bottom: 18px;
+  }
+
+  .profile-pill {
+    height: 64px;
+    padding: 0 14px;
+    border-radius: 28px;
+  }
+
+  .avatar {
+    width: 46px;
+    height: 46px;
+    font-size: 18px;
+  }
+
+  .logo {
+    width: 62px;
+    height: 62px;
+    font-size: 23px;
+  }
+
+  .sheet__row,
+  .sheet__row.is-collapsed {
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 24px;
+    min-height: 620px;
+  }
+
+  .course-cluster {
+    gap: 8px;
+  }
+
+  .course-cluster.is-collapsed {
+    width: 46px;
+  }
+
+  .courses {
+    padding: 20px 14px 16px;
+    border-radius: 34px;
+  }
+
+  .courses.is-collapsed {
+    width: 46px;
+    padding: 16px 5px;
+  }
+
+  .courses h1 {
+    margin-bottom: 8px;
+    font-size: 18px;
+    letter-spacing: 0.1em;
+  }
+
+  .course-card {
+    border-radius: 22px;
+    padding: 16px 10px;
+    font-size: 22px;
+  }
+
+  .course-trash {
+    height: 48px;
+    border-radius: 12px;
+  }
+
+  .order-bar {
+    width: 46px;
+    gap: 8px;
+    padding: 10px 6px 12px;
+    border-radius: 23px;
+  }
+
+  .order-bar__pop {
+    width: 34px;
+    height: 34px;
+  }
+
+  .popup-mark {
+    width: 27px;
+    height: 27px;
+  }
+
+  .order-bar__ticks {
+    width: 14px;
+    gap: 7px;
+    padding-top: 6px;
+  }
+
+  .collapse {
+    right: -12px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .stage {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .toolbox {
+    gap: 24px;
+    margin: 1px 0 10px 4px;
+    padding: 7px 13px 7px 14px;
+    font-size: 14px;
+  }
+
+  .unit-tabs {
+    padding: 0 16px 0 8px;
+  }
+
+  .unit-tab {
+    padding: 7px 13px 9px;
+  }
+
+  .panel-page {
+    padding: 22px;
+  }
+
+  .panel-page--scan {
+    grid-template-columns: minmax(0, 1fr) clamp(190px, 22%, 240px);
+    gap: 20px;
+    align-items: start;
+  }
+
+  .scan {
+    gap: 12px;
+    padding: 0;
+  }
+
+  .scan__stage {
+    width: 100%;
+    max-width: 640px;
+    justify-self: center;
+    padding-left: 30px;
+  }
+
+  .scan__label {
+    width: 30px;
+    font-size: 10px;
+  }
+
+  .tab {
+    left: 30px;
+  }
+
+  .frame {
+    width: 100%;
+    max-width: 640px;
+    min-height: 340px;
+    aspect-ratio: 4 / 3;
+    gap: 12px;
+  }
+
+  .camera-mark {
+    width: min(36%, var(--camera-size));
+  }
+
+  .frame strong {
+    font-size: 18px;
+  }
+
+  .send {
+    padding: 9px 24px;
+    font-size: 14px;
+  }
+
+  .requests {
+    max-height: 220px;
+    padding: 14px;
+    border-radius: 10px;
+  }
+
+  .requests h2 {
+    font-size: 15px;
+  }
+
+  .requests p,
+  .requests ul {
+    font-size: 13px;
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1120px) {
+  .sheet {
+    --sidebar-width: 174px;
+    width: calc(100% - 32px);
+  }
+
+  .sheet__row,
+  .sheet__row.is-collapsed {
+    gap: 16px;
+  }
+
+  .course-cluster {
+    gap: 6px;
+  }
+
+  .order-bar {
+    width: 42px;
+  }
+
+  .panel-page--scan {
+    grid-template-columns: minmax(0, 1fr) 170px;
+    gap: 14px;
+  }
+
+  .frame {
+    min-height: 300px;
+  }
+}
