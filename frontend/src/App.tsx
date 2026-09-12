@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { SiteHeader } from './lib/SiteHeader'
 import { SCREENS, SiteSidebar, type Screen } from './lib/SiteSidebar'
+import { loadAuthSession, refreshAuthSession, type AuthSession } from './lib/auth'
 import { Home } from './pages/Home'
 import { Progress } from './pages/Progress'
 import { Games } from './pages/Games'
@@ -19,11 +20,18 @@ function currentScreen(): Screen {
 function App() {
   const [screen, setScreen] = useState(currentScreen)
   const [notice, setNotice] = useState('')
+  const [session, setSession] = useState<AuthSession | null>(() => loadAuthSession())
 
   useEffect(() => {
     const sync = () => setScreen(currentScreen())
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
+  }, [])
+
+  useEffect(() => {
+    const current = loadAuthSession()
+    if (!current) return
+    void refreshAuthSession(current).then(setSession)
   }, [])
 
   return (
@@ -33,12 +41,12 @@ function App() {
         <span className="blob blob-a" aria-hidden="true" />
         <span className="blob blob-b" aria-hidden="true" />
         <SiteHeader />
-        {screen === 'home' ? <Home /> : null}
-        {screen === 'progress' ? <Progress /> : null}
+        {screen === 'home' ? <Home accessToken={session?.access_token} /> : null}
+        {screen === 'progress' ? <Progress session={session} /> : null}
         {screen === 'games' ? <Games /> : null}
         {screen === 'quests' ? <Quests /> : null}
-        {screen === 'profile' ? <Profile onError={setNotice} /> : null}
-        {screen === 'settings' ? <Settings /> : null}
+        {screen === 'profile' ? <Profile session={session} onError={setNotice} /> : null}
+        {screen === 'settings' ? <Settings session={session} onSession={setSession} /> : null}
         {screen === 'more' ? <More /> : null}
         {notice ? (
           <p className="notice" role="status">

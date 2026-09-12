@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+import unittest.mock
 
 TEST_DB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 TEST_DB.close()
@@ -104,6 +105,50 @@ class PocketTutorBackendTests(unittest.TestCase):
         with self.assertRaises(main.HTTPException) as context:
             main.get_progress("missing")
         self.assertEqual(context.exception.status_code, 404)
+
+    def test_guest_progress_is_claimed_once_by_account(self):
+        main.database.update_progress("guest-1", "addition", True, 10)
+        main.database.update_progress("guest-1", "addition", False, 0)
+
+        profile = main.database.onboard_account(
+            "account-1", "bindit_learner", "Bindit Learner", "guest-1",
+        )
+        first_claim = main.database.get_progress("account-1")
+        main.database.onboard_account(
+            "account-1", "bindit_learner", "Bindit Learner", "guest-1",
+        )
+        second_claim = main.database.get_progress("account-1")
+
+        self.assertEqual(profile["username"], "bindit_learner")
+        self.assertTrue(profile["friend_code"])
+        self.assertEqual(first_claim["total_xp"], 10)
+        self.assertEqual(first_claim["attempts"], 2)
+        self.assertEqual(first_claim, second_claim)
+
+    def test_guest_progress_cannot_be_stolen_from_an_existing_account(self):
+        main.database.onboard_account("real-account", "real_user", "Real")
+        main.database.update_progress("real-account", "addition", True, 10)
+        thief = main.database.onboard_account("thief-account", "thief_user", "Thief", "real-account")
+        self.assertEqual(thief["total_xp"], 0)
+
+    def test_account_profile_requires_a_token(self):
+        with self.assertRaises(main.HTTPException) as missing:
+            main.get_account_profile(None)
+        self.assertEqual(missing.exception.status_code, 401)
+
+    def test_analyze_answer_uses_verified_account_id(self):
+        request = main.AnswerRequest(
+            question="What is 2 + 2?",
+            student_answer="4",
+            correct_answer="4",
+            student_id="spoofed-id",
+            topic="addition",
+        )
+        with unittest.mock.patch.object(main.storage, "authenticated_user", return_value={"id": "acct-1", "email": "a@b.c"}):
+            result = main.analyze_answer(request, authorization="Bearer fake")
+        self.assertEqual(result.total_xp, 10)
+        self.assertIsNone(main.database.get_progress("spoofed-id"))
+        self.assertEqual(main.database.get_progress("acct-1")["total_xp"], 10)
 
 
 if __name__ == "__main__":

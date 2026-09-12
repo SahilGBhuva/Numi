@@ -142,7 +142,7 @@ function SketchPick<T extends string | number>({
   )
 }
 
-export function Home() {
+export function Home({ accessToken }: { accessToken?: string }) {
   const [coursesOpen, setCoursesOpen] = useState(true)
   const [notebook, setNotebook] = useState(() => {
     const loaded = loadNotebook()
@@ -592,7 +592,7 @@ export function Home() {
     setQuizBusy(true)
     setQuizError('')
     try {
-      const result = await analyzeAnswer(quizQuestion, quizAnswer, studentId.current)
+      const result = await analyzeAnswer(quizQuestion, quizAnswer, studentId.current, accessToken)
       setQuizResult(result)
     } catch {
       setQuizError('Could not check that answer. Is the backend running?')

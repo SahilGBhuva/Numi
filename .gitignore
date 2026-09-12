@@ -15,6 +15,7 @@ frontend/dist-ssr
 
 # Python backend
 backend/venv/
+.venv/
 __pycache__/
 *.py[cod]
 backend/*.db

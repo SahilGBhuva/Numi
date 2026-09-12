@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import random
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import database
+import storage
 
 app = FastAPI(
-    title="Pocket Tutor API",
-    version="0.2.0",
-    description="Math practice, feedback, hints, and lightweight progress tracking.",
+    title="Bindit API",
+    version="0.3.0",
+    description="Math practice, accounts, and lightweight progress tracking.",
 )
 
 app.add_middleware(
@@ -80,6 +82,38 @@ class ProgressResponse(BaseModel):
     streak: int
     best_streak: int
     weak_topics: list[str]
+
+
+class AccountProfileUpdate(BaseModel):
+    username: str = Field(pattern=r"^[a-z0-9_]{3,24}$")
+    display_name: str = Field(min_length=1, max_length=40)
+    guest_id: str | None = Field(default=None, min_length=1, max_length=100)
+    avatar_path: str | None = Field(default=None, max_length=500)
+    daily_goal: int | None = Field(default=None)
+
+
+class ProfileResponse(BaseModel):
+    student_id: str
+    username: str
+    display_name: str
+    avatar_path: str = ""
+    friend_code: str
+    daily_goal: int = 20
+    total_xp: int = 0
+    streak: int = 0
+    best_streak: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class AccountResponse(BaseModel):
+    id: str
+    email: str | None = None
+
+
+class AuthConfigResponse(BaseModel):
+    supabase_url: str
+    supabase_anon_key: str
 
 
 def normalize_text(value: str) -> str:
@@ -231,7 +265,7 @@ def generate_notes_question(notes: NoteContext, difficulty: int) -> QuestionResp
 @app.get("/")
 def home():
     return {
-        "message": "Pocket Tutor backend is running",
+        "message": "Bindit backend is running",
         "version": app.version,
         "docs": "/docs",
     }
@@ -243,13 +277,69 @@ def health():
     return {"status": "healthy"}
 
 
+def current_account(authorization: str | None) -> dict:
+    return storage.authenticated_user(authorization)
+
+
+def social_error(error: ValueError) -> HTTPException:
+    messages = {
+        "username_taken": (409, "That username is already taken"),
+        "invalid_daily_goal": (400, "Pick a daily goal of 10, 20, 30, or 50 XP"),
+    }
+    status, message = messages.get(str(error), (400, "Could not update that profile"))
+    return HTTPException(status_code=status, detail=message)
+
+
+@app.get("/api/auth/me", response_model=AccountResponse)
+def get_current_account(authorization: Annotated[str | None, Header()] = None):
+    user = current_account(authorization)
+    return {"id": user["id"], "email": user.get("email")}
+
+
+@app.get("/api/auth/config", response_model=AuthConfigResponse)
+def get_auth_config():
+    url, anon_key = storage.public_settings()
+    return {"supabase_url": url, "supabase_anon_key": anon_key}
+
+
+@app.get("/api/account/profile", response_model=ProfileResponse)
+def get_account_profile(authorization: Annotated[str | None, Header()] = None):
+    user = current_account(authorization)
+    profile = database.get_profile(user["id"])
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Finish setting up your profile")
+    return profile
+
+
+@app.put("/api/account/profile", response_model=ProfileResponse)
+def update_account_profile(
+    data: AccountProfileUpdate,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    user = current_account(authorization)
+    try:
+        return database.onboard_account(
+            user["id"],
+            data.username,
+            data.display_name.strip(),
+            data.guest_id,
+            data.avatar_path,
+            data.daily_goal,
+        )
+    except ValueError as error:
+        raise social_error(error) from error
+
+
 @app.post("/api/analyze-answer", response_model=AnswerResponse)
 @app.post("/analyze-answer", response_model=AnswerResponse, include_in_schema=False)
-def analyze_answer(data: AnswerRequest):
+def analyze_answer(data: AnswerRequest, authorization: Annotated[str | None, Header()] = None):
+    student_id = data.student_id
+    if authorization:
+        student_id = current_account(authorization)["id"]
     correct = answers_match(data.student_answer, data.correct_answer)
     mistake_type = None if correct else classify_mistake(data.student_answer, data.correct_answer)
     xp = 10 if correct else 0
-    record = update_progress(data.student_id, data.topic, correct, xp)
+    record = update_progress(student_id, data.topic, correct, xp)
 
     return AnswerResponse(
         correct=correct,
@@ -272,7 +362,9 @@ def generate_question(data: QuestionRequest):
 
 @app.get("/api/progress/{student_id}", response_model=ProgressResponse)
 @app.get("/progress/{student_id}", response_model=ProgressResponse, include_in_schema=False)
-def get_progress(student_id: str):
+def get_progress(student_id: str, authorization: Annotated[str | None, Header()] = None):
+    if authorization and current_account(authorization)["id"] != student_id:
+        raise HTTPException(status_code=403, detail="You can only view your own progress")
     record = database.get_progress(student_id)
     if record is None:
         raise HTTPException(status_code=404, detail="No progress found for this student")
