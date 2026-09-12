@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { analyzeAnswer, generateQuestion, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
+import { recordUnitAttempt } from '../lib/progress'
 import { getStudentId, loadNotebook, notesFor, pickCourseTone, saveNotebook, unitsFor, withCourseTones } from '../lib/session'
 import type { Course, NoteDeposit } from '../lib/types'
 import { WrenchMark } from '../lib/WrenchMark'
@@ -574,6 +575,11 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     try {
       const result = await analyzeAnswer(quizQuestion, quizAnswer, studentId.current, accessToken)
       setQuizResult(result)
+      recordUnitAttempt({
+        course: activeCourse,
+        unit: activeUnit || quizQuestion.topic,
+        correct: result.correct,
+      })
     } catch {
       setQuizError('Could not check that answer. Is the backend running?')
     } finally {

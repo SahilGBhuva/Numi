@@ -54,3 +54,13 @@ export type Notebook = {
   activeUnit: string
   deposits: NoteDeposit[]
 }
+
+export type UnitVerdict = 'locked' | 'seeded' | 'warming' | 'rising' | 'steady' | 'sharp' | 'slipping' | 'stuck'
+
+export type UnitAttempt = {
+  id: string
+  course: string
+  unit: string
+  correct: boolean
+  at: number
+}
