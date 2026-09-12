@@ -42,7 +42,8 @@ class PersonalizedQuizTests(unittest.TestCase):
         kwargs = mocked.call_args.kwargs
         self.assertEqual(kwargs['course'], 'Biology')
         self.assertEqual(kwargs['unit'], 'Cellular Respiration')
-        self.assertEqual(kwargs['source_labels'], ['unit3-notes.pdf'])
+        self.assertEqual(kwargs['source_labels'], [])
+        self.assertEqual(kwargs['source_text'], '')
 
     def test_strong_student_gets_harder_question(self):
         student = 'strong-student'

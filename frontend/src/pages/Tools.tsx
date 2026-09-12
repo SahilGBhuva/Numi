@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
-import { analyzeAnswer, generateQuestion, ingestNote, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
+import { analyzeAnswer, generateQuestion, uploadNote, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
 import { recordUnitAttempt } from '../lib/progress'
 import {
   fileToCourseImageDataUrl,
@@ -164,6 +164,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   const [courseRenameDraft, setCourseRenameDraft] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [notice, setNotice] = useState('')
+  const [uploadBusy, setUploadBusy] = useState(false)
   const [cardIndex, setCardIndex] = useState(0)
   const [cardFlipped, setCardFlipped] = useState(false)
   const [swipe, setSwipe] = useState<'idle' | 'next' | 'prev'>('idle')
@@ -607,7 +608,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
           ? {
               course: activeCourse,
               unit: activeUnit,
-              files: unitNotes.map((note) => `${note.id}::${note.fileName}`),
+              files: unitNotes.map((note) => note.fileName),
               other_units: units.filter((name) => name !== activeUnit),
               other_courses: courses.map((course) => course.name).filter((name) => name !== activeCourse),
             }
@@ -648,23 +649,30 @@ export function Tools({ accessToken }: { accessToken?: string }) {
       setNotice(`Create a unit in ${activeCourse} first, then send your notes there.`)
       return
     }
-    const selected = file
-    setNotice(`Scanning “${selected.name}”…`)
+    if (file.size > 10 * 1024 * 1024) {
+      setNotice('Notes must be 10 MB or smaller.')
+      return
+    }
+    setUploadBusy(true)
+    setNotice(`Reading “${file.name}”…`)
     try {
-      const uploaded = await ingestNote(selected, activeCourse, activeUnit, accessToken)
+      const uploaded = await uploadNote(file, activeCourse, activeUnit, accessToken)
       const deposit: NoteDeposit = {
         id: uploaded.id,
-        course: activeCourse,
-        unit: activeUnit,
+        course: uploaded.course,
+        unit: uploaded.unit,
         fileName: uploaded.file_name,
-        createdAt: new Date().toISOString(),
+        createdAt: uploaded.created_at,
+        status: uploaded.status,
       }
-      setNotebook((current) => ({ ...current, deposits: [deposit, ...current.deposits] }))
+      setNotebook((current) => ({ ...current, deposits: [deposit, ...current.deposits.filter((note) => note.id !== deposit.id)] }))
       setFile(null)
       if (fileInput.current) fileInput.current.value = ''
-      setNotice(`Scanned “${deposit.fileName}” — quizzes now use these notes.`)
+      setNotice(`Ready: “${deposit.fileName}” is grounded for ${activeCourse} → ${activeUnit}.`)
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not scan those notes.')
+      setNotice(error instanceof Error ? error.message : 'Could not read that note.')
+    } finally {
+      setUploadBusy(false)
     }
   }
 
@@ -834,7 +842,9 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                 setLookHint('')
                 setOrderOpen(true)
               }}
-            />
+            >
+              <span aria-hidden="true">🔧</span>
+            </button>
             <ol className="order-bar__ticks" aria-label="Course order">
               {courses.map((course, index) => (
                 <li key={course.name} className={course.name === activeCourse ? 'is-on' : ''}>
@@ -1149,7 +1159,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                         ref={fileInput}
                         className="file-input"
                         type="file"
-                        accept="image/*,.pdf,.txt,.md"
+                        accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt,.md,.csv,.json"
                         onChange={onPickFile}
                       />
                       <button className="frame" type="button" onClick={() => fileInput.current?.click()}>
@@ -1158,8 +1168,8 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                         {file ? <small>{file.name}</small> : null}
                       </button>
                     </div>
-                    <button className="send" type="submit" disabled={!file}>
-                      Send
+                    <button className="send" type="submit" disabled={!file || uploadBusy}>
+                      {uploadBusy ? 'Reading…' : 'Send'}
                     </button>
                   </form>
 

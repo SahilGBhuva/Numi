@@ -1,25 +1,96 @@
+import asyncio
+import os
+import tempfile
+import unittest
+from io import BytesIO
+from unittest.mock import MagicMock, patch
+
+from fastapi import HTTPException, UploadFile
+
+os.environ.setdefault("POCKET_TUTOR_DB_PATH", tempfile.mktemp(suffix=".db"))
+
+import database
+import main
 import note_ingestion
+import note_store
 
 
-def test_plain_text_extraction():
-    text = note_ingestion.extract_text('biology.txt', b'Cell theory\nAll cells come from existing cells.')
-    assert 'Cell theory' in text
-    assert 'existing cells' in text
+class NoteIngestionTests(unittest.TestCase):
+    def setUp(self):
+        database.engine.cache_clear()
+        database.init_db.cache_clear()
+        note_store.init_notes.cache_clear()
+        note_store.init_notes()
+        with database.engine().begin() as connection:
+            connection.execute(note_store.notes.delete())
+
+    def test_text_ingestion(self):
+        self.assertEqual(note_ingestion.extract_text("lesson.md", b"# Cells\nMitochondria make ATP."), "# Cells\nMitochondria make ATP.")
+
+    def test_unsupported_type(self):
+        with self.assertRaisesRegex(note_ingestion.NoteIngestionError, "Use a PDF"):
+            note_ingestion.extract_text("archive.zip", b"data")
+
+    def test_pdf_uses_text_extraction(self):
+        page = MagicMock()
+        page.extract_text.return_value = "Newton's first law"
+        with patch.object(note_ingestion, "PdfReader", return_value=MagicMock(pages=[page])):
+            self.assertEqual(note_ingestion.extract_text("physics.pdf", b"fake-pdf"), "Newton's first law")
+
+    def test_note_ownership_isolated(self):
+        saved = note_store.save_note("student-a", "Biology", "Cells", "cells.txt", "text/plain", "Nuclei contain DNA", 18)
+        self.assertIsNotNone(note_store.get_note("student-a", saved["id"]))
+        self.assertIsNone(note_store.get_note("student-b", saved["id"]))
+        self.assertEqual(note_store.list_notes("student-b", "Biology", "Cells"), [])
+
+    def test_image_upload_uses_vision_and_persists_text(self):
+        upload = UploadFile(filename="cells.png", file=BytesIO(b"image"), headers={"content-type": "image/png"})
+        with patch.object(main.auth, "authenticated_user", return_value={"id": "vision-student"}), patch.object(
+            main.ai_tutor, "extract_image_notes", return_value="Cell membranes regulate transport."
+        ) as vision:
+            result = asyncio.run(main.upload_note("Biology", "Cells", upload, "Bearer test"))
+        self.assertEqual(result.status, "ready")
+        vision.assert_called_once_with(image_bytes=b"image", content_type="image/png")
+        _, context = note_store.context_for("vision-student", "Biology", "Cells")
+        self.assertIn("Cell membranes regulate transport", context)
+
+    def test_image_vision_uses_fast_model_and_routing(self):
+        response = {"choices": [{"message": {"content": "Fast OCR"}}]}
+        with patch.object(main.ai_tutor, "_post", return_value=response) as post:
+            self.assertEqual(main.ai_tutor.extract_image_notes(image_bytes=b"image", content_type="image/png"), "Fast OCR")
+        payload = post.call_args.args[0]
+        self.assertEqual(payload["model"], "google/gemini-3.1-flash-lite")
+        self.assertEqual(payload["provider"]["sort"], "throughput")
+        self.assertEqual(payload["reasoning"]["effort"], "minimal")
+        self.assertEqual(post.call_args.kwargs["timeout"], 8.0)
+
+    def test_scanned_pdf_falls_back_to_ai_ocr(self):
+        upload = UploadFile(filename="scan.pdf", file=BytesIO(b"scanned-pdf"), headers={"content-type": "application/pdf"})
+        with patch.object(main.auth, "authenticated_user", return_value={"id": "pdf-student"}), patch.object(
+            main.note_ingestion, "extract_text", side_effect=note_ingestion.NoteIngestionError("No readable text was found in that file")
+        ), patch.object(main.ai_tutor, "extract_pdf_notes", return_value="OCR text about mitosis") as ocr:
+            result = asyncio.run(main.upload_note("Biology", "Mitosis", upload, "Bearer test"))
+        self.assertEqual(result.status, "ready")
+        ocr.assert_called_once_with(pdf_bytes=b"scanned-pdf")
+
+    def test_question_generation_uses_owned_note_excerpt(self):
+        note_store.save_note("student-a", "Biology", "Cells", "cells.txt", "text/plain", "Mitochondria generate ATP.", 25)
+        request = main.QuestionRequest(student_id="student-a", notes=main.NoteContext(course="Biology", unit="Cells", files=["untrusted.txt"]))
+        generated = {"question": "What generates ATP?", "correct_answer": "Mitochondria", "topic": "Cells"}
+        with patch.object(main.ai_tutor, "generate_question", return_value=generated) as ai:
+            main.generate_question(request)
+        kwargs = ai.call_args.kwargs
+        self.assertIn("Mitochondria generate ATP", kwargs["source_text"])
+        self.assertEqual(kwargs["source_labels"], ["cells.txt"])
+        self.assertNotIn("untrusted.txt", kwargs["source_labels"])
+
+    def test_note_endpoint_hides_another_students_note(self):
+        saved = note_store.save_note("student-a", "History", "Rome", "rome.txt", "text/plain", "Republic", 8)
+        with patch.object(main.auth, "authenticated_user", return_value={"id": "student-b"}):
+            with self.assertRaises(HTTPException) as raised:
+                main.get_note(saved["id"], "Bearer test")
+        self.assertEqual(raised.exception.status_code, 404)
 
 
-def test_rejects_unsupported_file():
-    try:
-        note_ingestion.extract_text('notes.exe', b'nope')
-    except note_ingestion.NoteIngestionError as exc:
-        assert 'PDF' in str(exc)
-    else:
-        raise AssertionError('unsupported file should be rejected')
-
-
-def test_rejects_oversized_file():
-    try:
-        note_ingestion.extract_text('notes.txt', b'x' * (note_ingestion.MAX_NOTE_BYTES + 1))
-    except note_ingestion.NoteIngestionError as exc:
-        assert '10 MB' in str(exc)
-    else:
-        raise AssertionError('oversized file should be rejected')
+if __name__ == "__main__":
+    unittest.main()

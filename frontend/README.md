@@ -1,6 +1,6 @@
-# Bindit frontend
+# bindet frontend
 
-Vite + React + TypeScript frontend for Bindit, a learning platform for connecting ideas, organizing notes, practicing concepts, and building consistent study habits.
+Vite + React + TypeScript frontend for bindet, a learning platform for connecting ideas, organizing notes, practicing concepts, and building consistent study habits.
 
 ## Setup
 

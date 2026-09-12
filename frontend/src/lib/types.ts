@@ -40,6 +40,7 @@ export type NoteDeposit = {
   unit: string
   fileName: string
   createdAt: string
+  status?: 'ready'
 }
 
 export type Course = {

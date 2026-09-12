@@ -64,6 +64,18 @@ create table if not exists uploaded_images (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists study_notes (
+  id uuid primary key,
+  student_id uuid not null references auth.users(id) on delete cascade,
+  course varchar(120) not null,
+  unit varchar(160) not null,
+  file_name varchar(255) not null,
+  content_type varchar(100) not null default '',
+  text text not null,
+  size_bytes integer not null check (size_bytes between 1 and 10485760),
+  created_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists progress_claims (
   guest_id text primary key,
   account_id text not null,
@@ -74,6 +86,7 @@ create index if not exists progress_claims_account_id_idx on progress_claims (ac
 create index if not exists topic_progress_student_id_idx on topic_progress (student_id);
 create index if not exists generated_questions_student_id_idx on generated_questions (student_id);
 create index if not exists uploaded_images_owner_id_idx on uploaded_images (owner_id, created_at desc);
+create index if not exists study_notes_student_unit_idx on study_notes (student_id, course, unit, created_at desc);
 create index if not exists profiles_username_idx on profiles (username);
 
 alter table student_progress enable row level security;
@@ -82,6 +95,11 @@ alter table profiles enable row level security;
 alter table generated_questions enable row level security;
 alter table friendships enable row level security;
 alter table uploaded_images enable row level security;
+alter table study_notes enable row level security;
+
+drop policy if exists "Students own study notes" on study_notes;
+create policy "Students own study notes" on study_notes
+  for all using (auth.uid() = student_id) with check (auth.uid() = student_id);
 alter table progress_claims enable row level security;
 
 -- Intentionally no policies for anon/authenticated. Backend access uses DATABASE_URL.

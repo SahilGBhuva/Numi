@@ -31,9 +31,9 @@ type SiteSidebarProps = { active: Screen }
 export function SiteSidebar({ active }: SiteSidebarProps) {
   return (
     <nav className="bindit-rail" aria-label="Main">
-      <a className="bindit-rail__brand" href="#home" aria-label="bindit home">
+      <a className="bindit-rail__brand" href="#home" aria-label="bindet home">
         <span className="bindit-rail__brand-mark" aria-hidden="true"><img src="/bindit-mascot.webp" alt="" /></span>
-        bindit
+        bindet
       </a>
       <ol className="bindit-rail__list">
         {ITEMS.map((item) => (
