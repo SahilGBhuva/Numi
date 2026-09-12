@@ -103,6 +103,51 @@ def generate_question(
     return {key: result[key].strip() for key in required}
 
 
+def generate_flashcards(
+    *,
+    course: str,
+    unit: str,
+    source_labels: list[str],
+    count: int,
+    personalization: dict[str, Any],
+) -> list[dict[str, str]]:
+    system_prompt = (
+        "You are Bindit's expert flashcard writer for students. Create a compact, high-value flashcard deck for any school "
+        "subject: math, science, history, English, literature, languages, economics, computer science, and similar courses. "
+        "Cards should prioritize the most important ideas, vocabulary, formulas, cause/effect relationships, examples, and "
+        "common misconceptions for the stated course and unit. Personalize the deck using student performance: spend more "
+        "cards on weak areas, include retrieval practice from previously weak concepts, and use harder application cards when "
+        "the student is strong. Avoid duplicates and trivia. Fronts must be clear prompts; backs must be concise teaching answers. "
+        "Source labels are filenames only, not file contents: never claim to know facts from a file you have not actually read. "
+        "Return ONLY valid JSON with exactly one key, cards. cards must be an array of objects with exactly: front, back, topic."
+    )
+    result = _chat_json(
+        system_prompt=system_prompt,
+        temperature=0.45,
+        data={
+            "course": course or "General Studies",
+            "unit": unit or "Current Unit",
+            "source_labels": source_labels[:20],
+            "count": max(3, min(30, count)),
+            "student_performance": personalization,
+        },
+    )
+    if set(result.keys()) != {"cards"} or not isinstance(result["cards"], list):
+        raise AITutorError("AI flashcard response did not match the required schema")
+
+    cards: list[dict[str, str]] = []
+    for raw in result["cards"]:
+        if not isinstance(raw, dict) or set(raw.keys()) != {"front", "back", "topic"}:
+            raise AITutorError("AI returned an invalid flashcard")
+        if not all(isinstance(raw[key], str) and raw[key].strip() for key in ("front", "back", "topic")):
+            raise AITutorError("AI returned an empty flashcard field")
+        cards.append({key: raw[key].strip() for key in ("front", "back", "topic")})
+
+    if len(cards) < 3:
+        raise AITutorError("AI returned too few flashcards")
+    return cards[: max(3, min(30, count))]
+
+
 def grade_answer(
     *,
     question: str,
