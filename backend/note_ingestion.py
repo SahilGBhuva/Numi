@@ -3,9 +3,6 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
-from docx import Document
-from pypdf import PdfReader
-
 MAX_NOTE_BYTES = 10 * 1024 * 1024
 MAX_STORED_CHARS = 120_000
 TEXT_EXTENSIONS = {'.txt', '.md', '.csv', '.json'}
@@ -34,8 +31,13 @@ def extract_text(filename: str, content: bytes) -> str:
         if suffix in TEXT_EXTENSIONS:
             text = content.decode('utf-8-sig', errors='replace')
         elif suffix == '.pdf':
+            # Keep heavy parsing libraries out of the normal backend cold-start path.
+            from pypdf import PdfReader
+
             text = '\n'.join(page.extract_text() or '' for page in PdfReader(BytesIO(content)).pages)
         elif suffix == '.docx':
+            from docx import Document
+
             document = Document(BytesIO(content))
             text = '\n'.join(paragraph.text for paragraph in document.paragraphs)
         else:
