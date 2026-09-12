@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { SiteHeader } from './lib/SiteHeader'
 import { SCREENS, SiteSidebar, type Screen } from './lib/SiteSidebar'
 import { loadAuthSession, refreshAuthSession, type AuthSession } from './lib/auth'
 import { Home } from './pages/Home'
@@ -9,6 +8,7 @@ import { Quests } from './pages/Quests'
 import { Profile } from './pages/Profile'
 import { Settings } from './pages/Settings'
 import { More } from './pages/More'
+import { Tools } from './pages/Tools'
 import './pages/Home.css'
 import './App.css'
 
@@ -40,8 +40,13 @@ function App() {
       <main className="sheet">
         <span className="blob blob-a" aria-hidden="true" />
         <span className="blob blob-b" aria-hidden="true" />
-        <SiteHeader />
-        {screen === 'home' ? <Home accessToken={session?.access_token} /> : null}
+        <div className="binder-sparks" aria-hidden="true">
+          <span className="binder-sparks__paper" />
+          <span className="binder-sparks__tab" />
+          <span className="binder-sparks__ring" />
+        </div>
+        {screen === 'home' ? <Home /> : null}
+        {screen === 'tools' ? <Tools accessToken={session?.access_token} /> : null}
         {screen === 'progress' ? <Progress session={session} /> : null}
         {screen === 'games' ? <Games /> : null}
         {screen === 'quests' ? <Quests /> : null}

@@ -1,10 +1,12 @@
+import { WrenchMark } from './WrenchMark'
 import './SiteSidebar.css'
 
-export const SCREENS = ['home', 'progress', 'games', 'quests', 'profile', 'settings', 'more'] as const
+export const SCREENS = ['home', 'tools', 'progress', 'games', 'quests', 'profile', 'settings', 'more'] as const
 export type Screen = (typeof SCREENS)[number]
 
 const ITEMS: { id: Screen; label: string }[] = [
   { id: 'home', label: 'Home' },
+  { id: 'tools', label: 'Tools' },
   { id: 'progress', label: 'Progress' },
   { id: 'games', label: 'Games' },
   { id: 'quests', label: 'Quests' },
@@ -22,6 +24,9 @@ function Mark({ kind }: { kind: Screen }) {
         <circle fill="#f3d48a" cx="16" cy="12.2" r="1.6" />
       </svg>
     )
+  }
+  if (kind === 'tools') {
+    return <WrenchMark />
   }
   if (kind === 'progress') {
     return (
@@ -91,12 +96,9 @@ type SiteSidebarProps = {
 export function SiteSidebar({ active }: SiteSidebarProps) {
   return (
     <nav className="numi-rail" aria-label="Main">
-      <a className="numi-rail__brand" href="#home" aria-label="Numi home">
-        <svg className="numi-rail__gear" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="3.2" />
-          <path d="M12 3.2v2.2M12 18.6v2.2M4.8 6.3l1.6 1.6M17.6 16.1l1.6 1.6M3.2 12h2.2M18.6 12h2.2M6.3 19.2l1.6-1.6M16.1 6.4l1.6-1.6" />
-        </svg>
-        numi
+      <a className="numi-rail__brand" href="#home" aria-label="Bindet home">
+        <img className="numi-rail__mark" src="/bindet-binder.png" alt="" />
+        bindet
       </a>
       <ol className="numi-rail__list">
         {ITEMS.map((item) => (
