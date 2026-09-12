@@ -1,4 +1,9 @@
-export type AuthUser = { id: string; email?: string }
+export type AuthUser = {
+  id: string
+  email?: string
+  user_metadata?: { username?: string; [key: string]: unknown }
+}
+
 export type AuthSession = {
   access_token: string
   refresh_token: string
@@ -7,13 +12,15 @@ export type AuthSession = {
 }
 
 type AuthConfig = { supabase_url: string; supabase_anon_key: string }
+type AuthResponse = Partial<AuthSession> & { expires_in?: number; user?: AuthUser }
 
 const SESSION_KEY = 'bindit-auth-session'
 const LEGACY_SESSION_KEY = 'numi-auth-session'
+const API_URL = import.meta.env.VITE_API_URL ?? ''
 let configPromise: Promise<AuthConfig> | null = null
 
 function config() {
-  configPromise ??= fetch('/api/auth/config').then(async (response) => {
+  configPromise ??= fetch(`${API_URL}/api/auth/config`).then(async (response) => {
     if (!response.ok) throw new Error('Accounts are not configured yet.')
     return response.json() as Promise<AuthConfig>
   })
@@ -25,6 +32,7 @@ export function loadAuthSession(): AuthSession | null {
   if (!raw) return null
   try {
     const session = JSON.parse(raw) as AuthSession
+    if (!session.access_token || !session.refresh_token || !session.user?.id) throw new Error('Invalid session')
     localStorage.setItem(SESSION_KEY, raw)
     localStorage.removeItem(LEGACY_SESSION_KEY)
     return session
@@ -36,14 +44,16 @@ export function loadAuthSession(): AuthSession | null {
 }
 
 export function saveAuthSession(session: AuthSession | null) {
-  if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session))
-  else {
+  if (session) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    localStorage.removeItem(LEGACY_SESSION_KEY)
+  } else {
     localStorage.removeItem(SESSION_KEY)
     localStorage.removeItem(LEGACY_SESSION_KEY)
   }
 }
 
-async function authRequest(path: string, body: Record<string, string>) {
+async function authRequest(path: string, body: Record<string, string>): Promise<AuthResponse> {
   const settings = await config()
   const response = await fetch(`${settings.supabase_url}/auth/v1/${path}`, {
     method: 'POST',
@@ -51,20 +61,29 @@ async function authRequest(path: string, body: Record<string, string>) {
     body: JSON.stringify(body),
   })
   const text = await response.text()
-  const data = text
-    ? (JSON.parse(text) as Record<string, unknown>)
-    : {}
+  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {}
   if (!response.ok) {
     const message = [data.msg, data.error_description, data.message].find((value) => typeof value === 'string')
-    throw new Error(message ?? 'Account request failed.')
+    throw new Error((message as string | undefined) ?? 'Account request failed.')
   }
-  return data as AuthSession & { user: AuthUser }
+  return data as AuthResponse
+}
+
+function asSession(data: AuthResponse): AuthSession | null {
+  if (!data.access_token || !data.refresh_token || !data.user?.id) return null
+  const expiresAt = data.expires_at ?? (data.expires_in ? Math.floor(Date.now() / 1000) + data.expires_in : undefined)
+  return {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: expiresAt,
+    user: data.user,
+  }
 }
 
 export async function refreshAuthSession(session: AuthSession): Promise<AuthSession | null> {
   if (session.expires_at && session.expires_at > Date.now() / 1000 + 60) return session
   try {
-    const refreshed = await authRequest('token?grant_type=refresh_token', { refresh_token: session.refresh_token })
+    const refreshed = asSession(await authRequest('token?grant_type=refresh_token', { refresh_token: session.refresh_token }))
     saveAuthSession(refreshed)
     return refreshed
   } catch {
@@ -74,17 +93,49 @@ export async function refreshAuthSession(session: AuthSession): Promise<AuthSess
 }
 
 export async function signUp(email: string, password: string) {
-  return authRequest('signup', { email, password })
+  const data = await authRequest('signup', { email, password })
+  const session = asSession(data)
+  saveAuthSession(session)
+  return { session, needsConfirmation: !session }
 }
 
 export async function signIn(email: string, password: string) {
-  return authRequest('token?grant_type=password', { email, password })
+  const session = asSession(await authRequest('token?grant_type=password', { email, password }))
+  if (!session) throw new Error('Could not create a login session.')
+  saveAuthSession(session)
+  return session
 }
 
 export async function requestPasswordReset(email: string) {
   await authRequest('recover', { email })
 }
 
+export async function updateUsername(session: AuthSession, username: string): Promise<AuthSession> {
+  const settings = await config()
+  const response = await fetch(`${settings.supabase_url}/auth/v1/user`, {
+    method: 'PUT',
+    headers: {
+      apikey: settings.supabase_anon_key,
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ data: { username } }),
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data.msg ?? data.error_description ?? data.message ?? 'Could not update your username.')
+  const nextSession: AuthSession = { ...session, user: { ...session.user, ...data } }
+  saveAuthSession(nextSession)
+  return nextSession
+}
+
 export function signOut() {
+  const session = loadAuthSession()
   saveAuthSession(null)
+  if (!session) return
+  void config()
+    .then((settings) => fetch(`${settings.supabase_url}/auth/v1/logout`, {
+      method: 'POST',
+      headers: { apikey: settings.supabase_anon_key, Authorization: `Bearer ${session.access_token}` },
+    }))
+    .catch(() => undefined)
 }

@@ -1,0 +1,41 @@
+.auth-guest-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 12px;
+  color: rgba(244, 239, 224, 0.56);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.auth-guest-separator::before,
+.auth-guest-separator::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: rgba(244, 239, 224, 0.14);
+}
+
+.auth-guest-button {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(167, 139, 250, 0.42);
+  border-radius: 14px;
+  background: rgba(167, 139, 250, 0.08);
+  color: #f4efe0;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.auth-guest-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(167, 139, 250, 0.14);
+  border-color: rgba(167, 139, 250, 0.72);
+}
+
+.auth-guest-button:disabled { opacity: 0.6; cursor: wait; }
+.auth-guest-copy { margin: 9px 0 0; color: rgba(244, 239, 224, 0.58); font-size: 12px; line-height: 1.45; text-align: center; }

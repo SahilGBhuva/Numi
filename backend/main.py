@@ -7,15 +7,16 @@ from typing import Annotated, Literal
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+import auth
 import database
-import storage
+import questions
 
 app = FastAPI(
-    title="Bindit API",
-    version="0.3.0",
-    description="Math practice, accounts, and lightweight progress tracking.",
+    title="bindit API",
+    version="0.5.0",
+    description="Practice, accounts, profiles, and secure progress tracking.",
 )
 
 app.add_middleware(
@@ -35,11 +36,10 @@ Topic = Literal["addition", "subtraction", "multiplication", "division", "mixed"
 
 
 class AnswerRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=500)
+    model_config = ConfigDict(extra="forbid")
+    question_id: str = Field(min_length=16, max_length=64)
     student_answer: str = Field(max_length=200)
-    correct_answer: str = Field(min_length=1, max_length=200)
     student_id: str = Field(default="anonymous", min_length=1, max_length=100)
-    topic: str = Field(default="general", max_length=50)
 
 
 class AnswerResponse(BaseModel):
@@ -63,12 +63,20 @@ class NoteContext(BaseModel):
 class QuestionRequest(BaseModel):
     topic: Topic = "mixed"
     difficulty: int = Field(default=1, ge=1, le=3)
+    student_id: str = Field(default="anonymous", min_length=1, max_length=100)
     notes: NoteContext | None = None
 
 
-class QuestionResponse(BaseModel):
+class GeneratedQuestion(BaseModel):
     question: str
     correct_answer: str
+    topic: str
+    difficulty: int
+
+
+class QuestionResponse(BaseModel):
+    question_id: str
+    question: str
     topic: str
     difficulty: int
 
@@ -99,7 +107,7 @@ class AccountProfileUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=40)
     guest_id: str | None = Field(default=None, min_length=1, max_length=100)
     avatar_path: str | None = Field(default=None, max_length=500)
-    daily_goal: int | None = Field(default=None)
+    daily_goal: int | None = None
 
 
 class ProfileResponse(BaseModel):
@@ -121,11 +129,16 @@ class ProfileResponse(BaseModel):
 class AccountResponse(BaseModel):
     id: str
     email: str | None = None
+    username: str | None = None
 
 
 class AuthConfigResponse(BaseModel):
     supabase_url: str
     supabase_anon_key: str
+
+
+class DailyLoginRequest(BaseModel):
+    student_id: str = Field(min_length=1, max_length=100)
 
 
 def normalize_text(value: str) -> str:
@@ -149,9 +162,7 @@ def truthy_alias(value: str) -> str:
 
 def file_stem(value: str) -> str:
     text = normalize_text(value)
-    if "." in text:
-        return text.rsplit(".", 1)[0]
-    return text
+    return text.rsplit(".", 1)[0] if "." in text else text
 
 
 def answers_match(student_answer: str, correct_answer: str) -> bool:
@@ -169,7 +180,6 @@ def answers_match(student_answer: str, correct_answer: str) -> bool:
 def classify_mistake(student_answer: str, correct_answer: str) -> str:
     if not student_answer.strip():
         return "blank_answer"
-
     student_number = parse_number(student_answer)
     correct_number = parse_number(correct_answer)
     if student_number is not None and correct_number is not None:
@@ -177,12 +187,9 @@ def classify_mistake(student_answer: str, correct_answer: str) -> str:
             return "sign_error"
         if abs(student_number - correct_number) == 1:
             return "off_by_one"
-        if correct_number != 0 and student_number * 10 == correct_number:
-            return "place_value_error"
-        if correct_number != 0 and student_number == correct_number * 10:
+        if correct_number != 0 and (student_number * 10 == correct_number or student_number == correct_number * 10):
             return "place_value_error"
         return "calculation_error"
-
     return "concept_or_format_error"
 
 
@@ -198,62 +205,48 @@ def make_hint(question: str, mistake_type: str) -> str:
     lowered = question.lower()
     if any(word in lowered for word in ("notes", "unit", "course", "file", "deposited")):
         return "Look at the notes you deposited in this unit — the file names, course, and unit are the answers."
-    base_hint = hints[mistake_type]
+    base = hints[mistake_type]
     if "/" in question or "divide" in lowered:
-        return base_hint + " Remember: division asks how many equal groups can be made."
+        return base + " Remember: division asks how many equal groups can be made."
     if "*" in question or "×" in question:
-        return base_hint + " You can check multiplication with repeated addition."
-    return base_hint
-
-
-def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict:
-    return database.update_progress(student_id, topic, correct, xp)
+        return base + " You can check multiplication with repeated addition."
+    return base
 
 
 def number_range(difficulty: int) -> tuple[int, int]:
     return {1: (1, 10), 2: (10, 50), 3: (25, 150)}[difficulty]
 
 
-def generate_math_question(topic: Topic, difficulty: int) -> QuestionResponse:
-    chosen_topic = random.choice(["addition", "subtraction", "multiplication", "division"]) if topic == "mixed" else topic
+def generate_math_question(topic: Topic, difficulty: int) -> GeneratedQuestion:
+    chosen = random.choice(["addition", "subtraction", "multiplication", "division"]) if topic == "mixed" else topic
     low, high = number_range(difficulty)
-
-    if chosen_topic == "addition":
+    if chosen == "addition":
         a, b = random.randint(low, high), random.randint(low, high)
         question, answer = f"What is {a} + {b}?", a + b
-    elif chosen_topic == "subtraction":
+    elif chosen == "subtraction":
         a, b = random.randint(low, high), random.randint(low, high)
         a, b = max(a, b), min(a, b)
         question, answer = f"What is {a} - {b}?", a - b
-    elif chosen_topic == "multiplication":
+    elif chosen == "multiplication":
         upper = {1: 10, 2: 15, 3: 25}[difficulty]
         a, b = random.randint(2, upper), random.randint(2, upper)
         question, answer = f"What is {a} × {b}?", a * b
     else:
         divisor = random.randint(2, {1: 10, 2: 15, 3: 25}[difficulty])
         answer = random.randint(2, {1: 10, 2: 20, 3: 40}[difficulty])
-        dividend = divisor * answer
-        question = f"What is {dividend} ÷ {divisor}?"
-
-    return QuestionResponse(
-        question=question,
-        correct_answer=str(answer),
-        topic=chosen_topic,
-        difficulty=difficulty,
-    )
+        question = f"What is {divisor * answer} ÷ {divisor}?"
+    return GeneratedQuestion(question=question, correct_answer=str(answer), topic=chosen, difficulty=difficulty)
 
 
-def generate_notes_question(notes: NoteContext, difficulty: int) -> QuestionResponse:
+def generate_notes_question(notes: NoteContext, difficulty: int) -> GeneratedQuestion:
     files = [name.strip() for name in notes.files if name.strip()]
     if not files:
         return generate_math_question("mixed", difficulty)
-
     file_name = random.choice(files)
     unit = notes.unit.strip() or "this unit"
     course = notes.course.strip() or "this course"
     other_units = [name for name in notes.other_units if name.strip() and name.strip() != unit]
     other_courses = [name for name in notes.other_courses if name.strip() and name.strip() != course]
-
     pool: list[tuple[str, str]] = [
         (f'Which unit holds the notes file “{file_name}”?', unit),
         (f'Which course are the notes “{file_name}” saved in?', course),
@@ -262,35 +255,50 @@ def generate_notes_question(notes: NoteContext, difficulty: int) -> QuestionResp
         (f'Type the name of a notes file in {unit}.', file_name),
     ]
     if other_units:
-        wrong_unit = random.choice(other_units)
-        pool.append((f'Are the notes “{file_name}” in {wrong_unit}? (yes/no)', "no"))
+        pool.append((f'Are the notes “{file_name}” in {random.choice(other_units)}? (yes/no)', "no"))
     if other_courses:
-        wrong_course = random.choice(other_courses)
-        pool.append((f'Are the notes “{file_name}” from {wrong_course}? (yes/no)', "no"))
+        pool.append((f'Are the notes “{file_name}” from {random.choice(other_courses)}? (yes/no)', "no"))
     if len(files) > 1 and difficulty >= 2:
         pool.append((f'How many notes besides “{file_name}” are in {unit}?', str(len(files) - 1)))
-
     question, answer = random.choice(pool)
-    return QuestionResponse(question=question, correct_answer=str(answer), topic=unit, difficulty=difficulty)
+    return GeneratedQuestion(question=question, correct_answer=str(answer), topic=unit, difficulty=difficulty)
 
 
-@app.get("/")
-def home():
-    return {
-        "message": "Bindit backend is running",
-        "version": app.version,
-        "docs": "/docs",
-    }
+def verified_student_id(claimed_id: str, authorization: str | None) -> str:
+    if authorization:
+        return auth.authenticated_user(authorization)["id"]
+    return claimed_id
 
 
-@app.get("/api/health")
-@app.get("/health", include_in_schema=False)
-def health():
-    return {"status": "healthy"}
+def topic_stats(record: dict) -> list[TopicStat]:
+    stats = []
+    for topic, row in record.get("topics", {}).items():
+        attempts = row["attempts"]
+        correct = row["correct"]
+        accuracy = round(correct / attempts * 100, 1) if attempts else 0.0
+        stats.append(TopicStat(topic=topic, attempts=attempts, correct_answers=correct, accuracy=accuracy))
+    return sorted(stats, key=lambda item: (-item.attempts, item.topic.lower()))
 
 
-def current_account(authorization: str | None) -> dict:
-    return storage.authenticated_user(authorization)
+def progress_response(student_id: str, record: dict) -> ProgressResponse:
+    accuracy = round(record["correct_answers"] / record["attempts"] * 100, 1) if record["attempts"] else 0.0
+    weak = [
+        topic for topic, stats in record["topics"].items()
+        if stats["attempts"] >= 2 and stats["correct"] / stats["attempts"] < 0.6
+    ]
+    return ProgressResponse(
+        student_id=student_id,
+        total_xp=record["total_xp"],
+        attempts=record["attempts"],
+        correct_answers=record["correct_answers"],
+        accuracy=accuracy,
+        streak=record["streak"],
+        best_streak=record["best_streak"],
+        login_streak=record.get("login_streak", 0),
+        best_login_streak=record.get("best_login_streak", 0),
+        weak_topics=weak,
+        topics=topic_stats(record),
+    )
 
 
 def social_error(error: ValueError) -> HTTPException:
@@ -302,32 +310,36 @@ def social_error(error: ValueError) -> HTTPException:
     return HTTPException(status_code=status, detail=message)
 
 
-@app.get("/api/auth/me", response_model=AccountResponse)
-def get_current_account(authorization: Annotated[str | None, Header()] = None):
-    user = current_account(authorization)
-    return {"id": user["id"], "email": user.get("email")}
+@app.get("/")
+def home():
+    return {"message": "bindit backend is running", "version": app.version, "docs": "/docs"}
+
+
+@app.get("/api/health")
+@app.get("/health", include_in_schema=False)
+def health():
+    return {"status": "healthy"}
 
 
 @app.get("/api/auth/config", response_model=AuthConfigResponse)
-def get_auth_config():
-    url, anon_key = storage.public_settings()
-    return {"supabase_url": url, "supabase_anon_key": anon_key}
+def auth_config():
+    url, key = auth.public_settings()
+    return {"supabase_url": url, "supabase_anon_key": key}
 
 
-def _topic_stats(record: dict) -> list[TopicStat]:
-    stats: list[TopicStat] = []
-    for topic, row in record.get("topics", {}).items():
-        attempts = row["attempts"]
-        correct = row["correct"]
-        accuracy = round(correct / attempts * 100, 1) if attempts else 0.0
-        stats.append(TopicStat(topic=topic, attempts=attempts, correct_answers=correct, accuracy=accuracy))
-    stats.sort(key=lambda item: (-item.attempts, item.topic.lower()))
-    return stats
+@app.get("/api/auth/me", response_model=AccountResponse)
+def auth_me(authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    return {
+        "id": user["id"],
+        "email": user.get("email"),
+        "username": (user.get("user_metadata") or {}).get("username"),
+    }
 
 
 @app.get("/api/account/profile", response_model=ProfileResponse)
 def get_account_profile(authorization: Annotated[str | None, Header()] = None):
-    user = current_account(authorization)
+    user = auth.authenticated_user(authorization)
     database.record_daily_login(user["id"])
     profile = database.get_profile(user["id"])
     if profile is None:
@@ -340,13 +352,10 @@ def get_account_profile(authorization: Annotated[str | None, Header()] = None):
 
 
 @app.put("/api/account/profile", response_model=ProfileResponse)
-def update_account_profile(
-    data: AccountProfileUpdate,
-    authorization: Annotated[str | None, Header()] = None,
-):
-    user = current_account(authorization)
+def update_account_profile(data: AccountProfileUpdate, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
     try:
-        return database.onboard_account(
+        profile = database.onboard_account(
             user["id"],
             data.username,
             data.display_name.strip(),
@@ -356,95 +365,81 @@ def update_account_profile(
         )
     except ValueError as error:
         raise social_error(error) from error
+    progress = database.get_progress(user["id"])
+    if progress:
+        profile["login_streak"] = progress.get("login_streak", 0)
+        profile["best_login_streak"] = progress.get("best_login_streak", 0)
+    return profile
+
+
+@app.post("/api/generate-question", response_model=QuestionResponse)
+def generate_question(data: QuestionRequest, authorization: Annotated[str | None, Header()] = None):
+    student_id = verified_student_id(data.student_id, authorization)
+    generated = generate_notes_question(data.notes, data.difficulty) if data.notes and data.notes.files else generate_math_question(data.topic, data.difficulty)
+    question_id = questions.save_question(
+        student_id,
+        generated.question,
+        generated.correct_answer,
+        generated.topic,
+        generated.difficulty,
+    )
+    return QuestionResponse(
+        question_id=question_id,
+        question=generated.question,
+        topic=generated.topic,
+        difficulty=generated.difficulty,
+    )
 
 
 @app.post("/api/analyze-answer", response_model=AnswerResponse)
-@app.post("/analyze-answer", response_model=AnswerResponse, include_in_schema=False)
 def analyze_answer(data: AnswerRequest, authorization: Annotated[str | None, Header()] = None):
-    student_id = data.student_id
-    if authorization:
-        student_id = current_account(authorization)["id"]
-    correct = answers_match(data.student_answer, data.correct_answer)
-    mistake_type = None if correct else classify_mistake(data.student_answer, data.correct_answer)
-    xp = 10 if correct else 0
-    record = update_progress(student_id, data.topic, correct, xp)
+    student_id = verified_student_id(data.student_id, authorization)
+    question = questions.get_question(student_id, data.question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    if question["completed"]:
+        raise HTTPException(status_code=409, detail="Question already completed")
 
+    correct = answers_match(data.student_answer, question["correct_answer"])
+    mistake_type = None if correct else classify_mistake(data.student_answer, question["correct_answer"])
+    xp = 10 if correct else 0
+    if correct and not questions.complete_question(student_id, data.question_id):
+        raise HTTPException(status_code=409, detail="Question already completed")
+    record = database.update_progress(student_id, question["topic"], correct, xp)
     return AnswerResponse(
         correct=correct,
         mistake_type=mistake_type,
         explanation="Correct! Great work." if correct else "That answer is not correct yet. Use the hint and try again.",
-        hint=None if correct else make_hint(data.question, mistake_type),
+        hint=None if correct else make_hint(question["question"], mistake_type),
         xp_earned=xp,
         total_xp=record["total_xp"],
         streak=record["streak"],
     )
 
 
-@app.post("/api/generate-question", response_model=QuestionResponse)
-@app.post("/generate-question", response_model=QuestionResponse, include_in_schema=False)
-def generate_question(data: QuestionRequest):
-    if data.notes and data.notes.files:
-        return generate_notes_question(data.notes, data.difficulty)
-    return generate_math_question(data.topic, data.difficulty)
+@app.get("/api/progress/me", response_model=ProgressResponse)
+def get_my_progress(authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    record = database.get_progress(user["id"])
+    if record is None:
+        raise HTTPException(status_code=404, detail="No progress found for this student")
+    return progress_response(user["id"], record)
 
 
 @app.get("/api/progress/{student_id}", response_model=ProgressResponse)
-@app.get("/progress/{student_id}", response_model=ProgressResponse, include_in_schema=False)
 def get_progress(student_id: str, authorization: Annotated[str | None, Header()] = None):
-    if authorization and current_account(authorization)["id"] != student_id:
-        raise HTTPException(status_code=403, detail="You can only view your own progress")
+    if authorization:
+        verified = auth.authenticated_user(authorization)["id"]
+        if verified != student_id:
+            raise HTTPException(status_code=403, detail="You can only view your own progress")
     record = database.get_progress(student_id)
     if record is None:
         raise HTTPException(status_code=404, detail="No progress found for this student")
-    accuracy = round(record["correct_answers"] / record["attempts"] * 100, 1) if record["attempts"] else 0.0
-    weak_topics = [
-        topic
-        for topic, stats in record["topics"].items()
-        if stats["attempts"] >= 2 and stats["correct"] / stats["attempts"] < 0.6
-    ]
-
-    return ProgressResponse(
-        student_id=student_id,
-        total_xp=record["total_xp"],
-        attempts=record["attempts"],
-        correct_answers=record["correct_answers"],
-        accuracy=accuracy,
-        streak=record["streak"],
-        best_streak=record["best_streak"],
-        login_streak=record.get("login_streak", 0),
-        best_login_streak=record.get("best_login_streak", 0),
-        weak_topics=weak_topics,
-        topics=_topic_stats(record),
-    )
-
-
-class DailyLoginRequest(BaseModel):
-    student_id: str = Field(min_length=1, max_length=100)
+    return progress_response(student_id, record)
 
 
 @app.post("/api/daily-login", response_model=ProgressResponse)
-@app.post("/daily-login", response_model=ProgressResponse, include_in_schema=False)
 def daily_login(data: DailyLoginRequest, authorization: Annotated[str | None, Header()] = None):
-    student_id = data.student_id
-    if authorization:
-        student_id = current_account(authorization)["id"]
+    student_id = verified_student_id(data.student_id, authorization)
     record = database.record_daily_login(student_id)
-    accuracy = round(record["correct_answers"] / record["attempts"] * 100, 1) if record["attempts"] else 0.0
-    weak_topics = [
-        topic
-        for topic, stats in record["topics"].items()
-        if stats["attempts"] >= 2 and stats["correct"] / stats["attempts"] < 0.6
-    ]
-    return ProgressResponse(
-        student_id=student_id,
-        total_xp=record["total_xp"],
-        attempts=record["attempts"],
-        correct_answers=record["correct_answers"],
-        accuracy=accuracy,
-        streak=record["streak"],
-        best_streak=record["best_streak"],
-        login_streak=record.get("login_streak", 0),
-        best_login_streak=record.get("best_login_streak", 0),
-        weak_topics=weak_topics,
-        topics=_topic_stats(record),
-    )
+    return progress_response(student_id, record)

@@ -1,6 +1,6 @@
-# CAC study app (frontend)
+# Bindit frontend
 
-Vite + React + TypeScript app for high school students: paste notes or a topic, take a quiz, see score and streak/XP.
+Vite + React + TypeScript frontend for Bindit, a learning platform for connecting ideas, organizing notes, practicing concepts, and building consistent study habits.
 
 ## Setup
 

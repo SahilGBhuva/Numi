@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
+import { AuthGate } from './components/AuthGate'
+import { useAuth } from './lib/AuthContext'
 import { SCREENS, SiteSidebar, type Screen } from './lib/SiteSidebar'
 import { recordDailyLogin } from './lib/api'
-import { loadAuthSession, refreshAuthSession, type AuthSession } from './lib/auth'
 import { getStudentId } from './lib/session'
 import { Home } from './pages/Home'
+import { Tools } from './pages/Tools'
 import { Progress } from './pages/Progress'
 import { Games } from './pages/Games'
 import { Goals } from './pages/Goals'
 import { Profile } from './pages/Profile'
 import { Settings } from './pages/Settings'
 import { More } from './pages/More'
-import { Tools } from './pages/Tools'
 import './pages/Home.css'
 import './App.css'
 
@@ -20,21 +21,15 @@ function currentScreen(): Screen {
   return SCREENS.includes(hash) ? hash : 'home'
 }
 
-function App() {
+function AppShell() {
   const [screen, setScreen] = useState(currentScreen)
   const [notice, setNotice] = useState('')
-  const [session, setSession] = useState<AuthSession | null>(() => loadAuthSession())
+  const { session, setSession } = useAuth()
 
   useEffect(() => {
     const sync = () => setScreen(currentScreen())
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
-  }, [])
-
-  useEffect(() => {
-    const current = loadAuthSession()
-    if (!current) return
-    void refreshAuthSession(current).then(setSession)
   }, [])
 
   useEffect(() => {
@@ -61,13 +56,17 @@ function App() {
         {screen === 'profile' ? <Profile session={session} onError={setNotice} /> : null}
         {screen === 'settings' ? <Settings session={session} onSession={setSession} /> : null}
         {screen === 'more' ? <More /> : null}
-        {notice ? (
-          <p className="notice" role="status">
-            {notice}
-          </p>
-        ) : null}
+        {notice ? <p className="notice" role="status">{notice}</p> : null}
       </main>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <AuthGate>
+      <AppShell />
+    </AuthGate>
   )
 }
 

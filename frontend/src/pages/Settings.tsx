@@ -1,13 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { getAccountProfile, saveAccountProfile, type Profile } from '../lib/api'
-import {
-  requestPasswordReset,
-  saveAuthSession,
-  signIn,
-  signOut,
-  signUp,
-  type AuthSession,
-} from '../lib/auth'
+import { requestPasswordReset, signIn, signOut, signUp, type AuthSession } from '../lib/auth'
 import { getStudentId } from '../lib/session'
 import './Progress.css'
 
@@ -46,6 +39,10 @@ export function Settings({ session, onSession }: SettingsProps) {
           setDisplayName(saved.display_name)
           setUsername(saved.username)
           setDailyGoal(saved.daily_goal)
+        } else {
+          const metadataName = session.user.user_metadata?.username
+          setUsername(typeof metadataName === 'string' ? metadataName : '')
+          setDisplayName(typeof metadataName === 'string' ? metadataName : '')
         }
       })
       .catch(() => setMessage('Could not load your profile.'))
@@ -57,17 +54,22 @@ export function Settings({ session, onSession }: SettingsProps) {
     setMessage('')
     try {
       if (mode === 'reset') {
-        await requestPasswordReset(email)
+        await requestPasswordReset(email.trim())
         setMessage('Check your email for a reset link.')
         return
       }
-      const next = mode === 'login' ? await signIn(email, password) : await signUp(email, password)
-      if (!next.access_token) {
-        setMessage('Check your email to confirm your account, then log in.')
-      } else {
-        saveAuthSession(next)
+      if (mode === 'login') {
+        const next = await signIn(email.trim(), password)
         onSession(next)
         setMessage('You are signed in.')
+      } else {
+        const result = await signUp(email.trim(), password)
+        if (!result.session) {
+          setMessage('Check your email to confirm your account, then log in.')
+        } else {
+          onSession(result.session)
+          setMessage('Your account is ready.')
+        }
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not continue.')
@@ -100,7 +102,7 @@ export function Settings({ session, onSession }: SettingsProps) {
   function logout() {
     signOut()
     onSession(null)
-    setMessage('Signed out.')
+    setMessage('Signed out. You can keep using bindit as a guest.')
   }
 
   return (
@@ -108,7 +110,7 @@ export function Settings({ session, onSession }: SettingsProps) {
       <h1>Settings</h1>
       <p>
         {session
-          ? `Signed in as ${session.user.email ?? 'your Bindit account'}.`
+          ? `Signed in as ${session.user.email ?? 'your bindit account'}.`
           : 'Create an account to keep XP, streaks, and notes across devices.'}
       </p>
       {!session ? (
@@ -138,9 +140,7 @@ export function Settings({ session, onSession }: SettingsProps) {
             <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage('') }}>
               {mode === 'login' ? 'New here? Create an account' : 'Already have an account? Log in'}
             </button>
-            <button type="button" onClick={() => { setMode('reset'); setMessage('') }}>
-              Forgot password
-            </button>
+            <button type="button" onClick={() => { setMode('reset'); setMessage('') }}>Forgot password</button>
           </div>
         </form>
       ) : (
@@ -162,20 +162,12 @@ export function Settings({ session, onSession }: SettingsProps) {
           <label>
             Daily goal
             <select value={dailyGoal} onChange={(event) => setDailyGoal(Number(event.target.value))}>
-              {GOALS.map((goal) => (
-                <option key={goal.id} value={goal.id}>
-                  {goal.label}
-                </option>
-              ))}
+              {GOALS.map((goal) => <option key={goal.id} value={goal.id}>{goal.label}</option>)}
             </select>
           </label>
           {profile ? <p className="account-form__status">Friend code {profile.friend_code}</p> : null}
-          <button type="submit" disabled={busy}>
-            {busy ? 'Saving…' : profile ? 'Update profile' : 'Save profile and claim guest progress'}
-          </button>
-          <button type="button" onClick={logout}>
-            Sign out
-          </button>
+          <button type="submit" disabled={busy}>{busy ? 'Saving…' : profile ? 'Update profile' : 'Save profile and claim guest progress'}</button>
+          <button type="button" onClick={logout}>Sign out</button>
           {message ? <p className="account-form__status">{message}</p> : null}
         </form>
       )}
