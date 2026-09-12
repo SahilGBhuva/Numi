@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
 import { analyzeAnswer, generateQuestion, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
 import { getStudentId, loadNotebook, notesFor, pickCourseTone, saveNotebook, unitsFor, withCourseTones } from '../lib/session'
 import type { Course, NoteDeposit } from '../lib/types'

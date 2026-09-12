@@ -1,4 +1,5 @@
-import { ChangeEvent, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { fileToAvatarDataUrl, loadAvatar, saveAvatar } from './session'
 
 type AvatarControlProps = {
