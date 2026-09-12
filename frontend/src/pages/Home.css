@@ -11,11 +11,10 @@
 .hero h1 { margin:14px 0 20px; max-width:760px; color:var(--ink); font-size:clamp(48px,6vw,82px); line-height:.95; letter-spacing:-5px; }
 .hero h1 em { color:var(--purple); font-style:normal; }
 .hero p { max-width:590px; color:var(--muted); font-size:18px; line-height:1.65; }
-.mascot-card { position:relative; height:250px; display:grid; place-items:center; }
-.mascot { position:relative; z-index:3; display:grid; place-items:center; width:154px; height:154px; border-radius:46% 54% 48% 52%/54% 43% 57% 46%; color:white; font-size:32px; font-weight:900; background:linear-gradient(145deg,#8e72ff,#5637db); box-shadow:0 35px 70px #7557ed4a,inset 0 2px 0 #ffffff55; transform:rotate(-4deg); animation:float 4s ease-in-out infinite; }
-.mascot::before { content:''; position:absolute; width:34px; height:18px; border-radius:50%; background:#ffb65e; bottom:27px; left:60px; opacity:.9; }
+.mascot-card { position:relative; height:360px; display:grid; place-items:center; isolation:isolate; }
+.mascot { position:relative; z-index:3; width:310px; max-height:350px; object-fit:contain; border-radius:42% 42% 30% 30%; filter:drop-shadow(0 28px 30px #4e36952b); animation:float 4s ease-in-out infinite; }
 .orbit { position:absolute; border-radius:50%; border:1px solid #7658ff35; }
-.orbit-one { width:235px; height:235px; }.orbit-two { width:305px; height:190px; transform:rotate(-18deg); }
+.orbit-one { width:285px; height:285px; }.orbit-two { width:370px; height:230px; transform:rotate(-18deg); }
 .spark { position:absolute; color:#ffbd3f; font-size:24px; }.spark-one { top:23px; right:37px; }.spark-two { left:18px; bottom:35px; color:#49d8c2; }
 @keyframes float { 50% { transform:translateY(-10px) rotate(3deg); } }
 .workspace { max-width:1180px; margin:0 auto; display:grid; grid-template-columns:350px 1fr; gap:28px; align-items:stretch; }
@@ -47,5 +46,5 @@
 .progress-grid { margin-top:22px; display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }.progress-grid article { display:flex; gap:16px; padding:22px; border:1px solid var(--line); border-radius:20px; background:#fff; }
 .metric-icon { display:grid; place-items:center; width:48px; height:48px; border-radius:15px; font-size:20px; }.metric-icon.purple { background:#eee9ff; }.metric-icon.orange { background:#fff0e2; }.metric-icon.teal { color:#008e7a; background:#e3f9f4; }
 .progress-grid small { display:block; color:var(--muted); font-size:9px; font-weight:900; letter-spacing:1.2px; }.progress-grid strong { display:block; margin:4px 0; color:var(--ink); font-size:24px; letter-spacing:-.7px; }.progress-grid p { color:var(--muted); font-size:11px; }
-@media(max-width:850px){.hero{grid-template-columns:1fr;padding-top:55px}.mascot-card{display:none}.workspace{grid-template-columns:1fr}.topic-list{grid-template-columns:repeat(2,1fr)}.progress-grid{grid-template-columns:1fr}}
-@media(max-width:560px){.home{padding:0 18px 50px}.topbar{height:70px}.stats{gap:10px;font-size:12px}.stats span:nth-child(2){display:none}.hero{padding:48px 0 34px}.hero h1{letter-spacing:-3px}.path-panel{padding:20px}.topic-list{grid-template-columns:1fr}.question-area{padding:40px 22px 28px}.question-area h3{min-height:64px;margin-bottom:32px}.answer-row{grid-template-columns:1fr}.check-button{min-height:54px}.feedback{grid-template-columns:auto 1fr}.feedback button{grid-column:1/-1;text-align:right}.lesson-top{padding-inline:20px}}
+@media(max-width:850px){.hero{grid-template-columns:1fr;padding-top:55px}.mascot-card{height:260px;margin-top:8px}.mascot{width:230px;max-height:255px}.orbit-one{width:210px;height:210px}.orbit-two{width:280px;height:170px}.workspace{grid-template-columns:1fr}.topic-list{grid-template-columns:repeat(2,1fr)}.progress-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.home{padding:0 18px 50px}.topbar{height:70px}.stats{gap:10px;font-size:12px}.stats span:nth-child(2){display:none}.hero{padding:48px 0 34px;gap:20px}.hero h1{letter-spacing:-3px}.mascot-card{height:220px}.mascot{width:195px;max-height:220px}.path-panel{padding:20px}.topic-list{grid-template-columns:1fr}.question-area{padding:40px 22px 28px}.question-area h3{min-height:64px;margin-bottom:32px}.answer-row{grid-template-columns:1fr}.check-button{min-height:54px}.feedback{grid-template-columns:auto 1fr}.feedback button{grid-column:1/-1;text-align:right}.lesson-top{padding-inline:20px}}

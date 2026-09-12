@@ -106,7 +106,11 @@ export function Home() {
 
     <section className="hero" id="top">
       <div><span className="eyebrow">YOUR DAILY MATH ADVENTURE</span><h1>Small steps.<br /><em>Big brain energy.</em></h1><p>Master math through quick challenges, smart hints, and a streak worth protecting.</p></div>
-      <div className="mascot-card" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="mascot">◕‿◕</div><span className="spark spark-one">✦</span><span className="spark spark-two">✦</span></div>
+      <div className="mascot-card">
+        <div className="orbit orbit-one" aria-hidden="true"/><div className="orbit orbit-two" aria-hidden="true"/>
+        <img className="mascot" src="/bindit-otter-mascot.png" alt="Bindit otter holding a purple binder" />
+        <span className="spark spark-one" aria-hidden="true">✦</span><span className="spark spark-two" aria-hidden="true">✦</span>
+      </div>
     </section>
 
     <section className="workspace">
