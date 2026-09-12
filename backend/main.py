@@ -9,14 +9,15 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
+import ai_tutor
 import auth
 import database
 import questions
 
 app = FastAPI(
     title="bindit API",
-    version="0.5.0",
-    description="Practice, accounts, profiles, and secure progress tracking.",
+    version="0.8.0",
+    description="Practice, accounts, profiles, secure progress tracking, personalized quizzes, AI flashcards, and AI tutoring.",
 )
 
 app.add_middleware(
@@ -38,15 +39,18 @@ Topic = Literal["addition", "subtraction", "multiplication", "division", "mixed"
 class AnswerRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     question_id: str = Field(min_length=16, max_length=64)
-    student_answer: str = Field(max_length=200)
+    student_answer: str = Field(max_length=2000)
     student_id: str = Field(default="anonymous", min_length=1, max_length=100)
 
 
 class AnswerResponse(BaseModel):
     correct: bool
+    score: int = Field(ge=0, le=100)
     mistake_type: str | None
+    misconception: str | None = None
     explanation: str
     hint: str | None
+    grading_source: Literal["deterministic", "ai", "fallback"]
     xp_earned: int
     total_xp: int
     streak: int
@@ -79,6 +83,27 @@ class QuestionResponse(BaseModel):
     question: str
     topic: str
     difficulty: int
+
+
+class FlashcardRequest(BaseModel):
+    student_id: str = Field(default="anonymous", min_length=1, max_length=100)
+    course: str = Field(default="", max_length=120)
+    unit: str = Field(default="", max_length=160)
+    files: list[str] = Field(default_factory=list, max_length=30)
+    count: int = Field(default=10, ge=3, le=30)
+
+
+class Flashcard(BaseModel):
+    front: str
+    back: str
+    topic: str
+
+
+class FlashcardResponse(BaseModel):
+    course: str
+    unit: str
+    personalized: bool
+    cards: list[Flashcard]
 
 
 class TopicStat(BaseModel):
@@ -195,16 +220,14 @@ def classify_mistake(student_answer: str, correct_answer: str) -> str:
 
 def make_hint(question: str, mistake_type: str) -> str:
     hints = {
-        "blank_answer": "Start by writing down the numbers and the operation the question asks for.",
+        "blank_answer": "Start by identifying what the question is asking and write down what you know.",
         "sign_error": "Check whether the result should be positive or negative.",
         "off_by_one": "Recount once carefully; your answer is only one away.",
         "place_value_error": "Check the decimal point and each number's place value.",
         "calculation_error": "Break the calculation into smaller steps and check each one.",
-        "concept_or_format_error": "Try expressing the answer as a single number or a simpler equivalent form.",
+        "concept_or_format_error": "State the key idea first, then connect it directly to what the question asks.",
     }
     lowered = question.lower()
-    if any(word in lowered for word in ("notes", "unit", "course", "file", "deposited")):
-        return "Look at the notes you deposited in this unit — the file names, course, and unit are the answers."
     base = hints[mistake_type]
     if "/" in question or "divide" in lowered:
         return base + " Remember: division asks how many equal groups can be made."
@@ -239,29 +262,19 @@ def generate_math_question(topic: Topic, difficulty: int) -> GeneratedQuestion:
 
 
 def generate_notes_question(notes: NoteContext, difficulty: int) -> GeneratedQuestion:
+    """Legacy offline helper retained for compatibility with existing tests."""
     files = [name.strip() for name in notes.files if name.strip()]
     if not files:
         return generate_math_question("mixed", difficulty)
     file_name = random.choice(files)
     unit = notes.unit.strip() or "this unit"
     course = notes.course.strip() or "this course"
-    other_units = [name for name in notes.other_units if name.strip() and name.strip() != unit]
-    other_courses = [name for name in notes.other_courses if name.strip() and name.strip() != course]
-    pool: list[tuple[str, str]] = [
-        (f'Which unit holds the notes file “{file_name}”?', unit),
-        (f'Which course are the notes “{file_name}” saved in?', course),
-        (f'How many note files are deposited in {unit}?', str(len(files))),
-        (f'Is “{file_name}” deposited in {unit}? (yes/no)', "yes"),
-        (f'Type the name of a notes file in {unit}.', file_name),
-    ]
-    if other_units:
-        pool.append((f'Are the notes “{file_name}” in {random.choice(other_units)}? (yes/no)', "no"))
-    if other_courses:
-        pool.append((f'Are the notes “{file_name}” from {random.choice(other_courses)}? (yes/no)', "no"))
-    if len(files) > 1 and difficulty >= 2:
-        pool.append((f'How many notes besides “{file_name}” are in {unit}?', str(len(files) - 1)))
-    question, answer = random.choice(pool)
-    return GeneratedQuestion(question=question, correct_answer=str(answer), topic=unit, difficulty=difficulty)
+    return GeneratedQuestion(
+        question=f'Which course are the notes “{file_name}” saved in?',
+        correct_answer=course,
+        topic=unit,
+        difficulty=difficulty,
+    )
 
 
 def verified_student_id(claimed_id: str, authorization: str | None) -> str:
@@ -299,6 +312,38 @@ def progress_response(student_id: str, record: dict) -> ProgressResponse:
         weak_topics=weak,
         topics=topic_stats(record),
     )
+
+
+def quiz_personalization(student_id: str, requested_difficulty: int, target_topic: str) -> tuple[int, dict]:
+    record = database.get_progress(student_id) or {}
+    topics = record.get("topics", {})
+    target = topics.get(target_topic, {})
+    topic_attempts = int(target.get("attempts", 0))
+    topic_correct = int(target.get("correct", 0))
+    topic_accuracy = round(topic_correct / topic_attempts * 100, 1) if topic_attempts else None
+    attempts = int(record.get("attempts", 0))
+    correct = int(record.get("correct_answers", 0))
+    overall_accuracy = round(correct / attempts * 100, 1) if attempts else None
+
+    difficulty = requested_difficulty
+    if topic_attempts >= 3 and topic_accuracy is not None and topic_accuracy >= 85:
+        difficulty = min(3, difficulty + 1)
+    elif topic_attempts >= 2 and topic_accuracy is not None and topic_accuracy < 55:
+        difficulty = max(1, difficulty - 1)
+
+    weak_topics = [
+        name for name, stats in topics.items()
+        if stats.get("attempts", 0) >= 2 and stats.get("correct", 0) / stats["attempts"] < 0.6
+    ]
+    return difficulty, {
+        "overall_attempts": attempts,
+        "overall_accuracy": overall_accuracy,
+        "current_topic": target_topic,
+        "current_topic_attempts": topic_attempts,
+        "current_topic_accuracy": topic_accuracy,
+        "weak_topics": weak_topics[:8],
+        "streak": int(record.get("streak", 0)),
+    }
 
 
 def social_error(error: ValueError) -> HTTPException:
@@ -375,7 +420,31 @@ def update_account_profile(data: AccountProfileUpdate, authorization: Annotated[
 @app.post("/api/generate-question", response_model=QuestionResponse)
 def generate_question(data: QuestionRequest, authorization: Annotated[str | None, Header()] = None):
     student_id = verified_student_id(data.student_id, authorization)
-    generated = generate_notes_question(data.notes, data.difficulty) if data.notes and data.notes.files else generate_math_question(data.topic, data.difficulty)
+    has_school_context = bool(data.notes and (data.notes.course.strip() or data.notes.unit.strip()))
+
+    if has_school_context and data.notes:
+        target_topic = data.notes.unit.strip() or data.notes.course.strip()
+        difficulty, personalization = quiz_personalization(student_id, data.difficulty, target_topic)
+        try:
+            ai_question = ai_tutor.generate_question(
+                course=data.notes.course.strip(),
+                unit=data.notes.unit.strip(),
+                source_labels=[name.strip() for name in data.notes.files if name.strip()],
+                focus=data.topic,
+                difficulty=difficulty,
+                personalization=personalization,
+            )
+        except ai_tutor.AITutorError as exc:
+            raise HTTPException(status_code=503, detail="AI quiz generation is temporarily unavailable. Try again in a moment.") from exc
+        generated = GeneratedQuestion(
+            question=ai_question["question"],
+            correct_answer=ai_question["correct_answer"],
+            topic=ai_question["topic"] or target_topic,
+            difficulty=difficulty,
+        )
+    else:
+        generated = generate_math_question(data.topic, data.difficulty)
+
     question_id = questions.save_question(
         student_id,
         generated.question,
@@ -391,6 +460,36 @@ def generate_question(data: QuestionRequest, authorization: Annotated[str | None
     )
 
 
+@app.post("/api/generate-flashcards", response_model=FlashcardResponse)
+def generate_flashcards(data: FlashcardRequest, authorization: Annotated[str | None, Header()] = None):
+    student_id = verified_student_id(data.student_id, authorization)
+    course = data.course.strip()
+    unit = data.unit.strip()
+    if not course and not unit:
+        raise HTTPException(status_code=400, detail="Choose a course or unit before generating flashcards")
+
+    target_topic = unit or course
+    _, personalization = quiz_personalization(student_id, 2, target_topic)
+    try:
+        cards = ai_tutor.generate_flashcards(
+            course=course,
+            unit=unit,
+            source_labels=[name.strip() for name in data.files if name.strip()],
+            count=data.count,
+            personalization=personalization,
+        )
+    except ai_tutor.AITutorError as exc:
+        raise HTTPException(status_code=503, detail="AI flashcard generation is temporarily unavailable. Try again in a moment.") from exc
+
+    personalized = bool(personalization.get("overall_attempts", 0))
+    return FlashcardResponse(
+        course=course,
+        unit=unit,
+        personalized=personalized,
+        cards=[Flashcard(**card) for card in cards],
+    )
+
+
 @app.post("/api/analyze-answer", response_model=AnswerResponse)
 def analyze_answer(data: AnswerRequest, authorization: Annotated[str | None, Header()] = None):
     student_id = verified_student_id(data.student_id, authorization)
@@ -400,17 +499,52 @@ def analyze_answer(data: AnswerRequest, authorization: Annotated[str | None, Hea
     if question["completed"]:
         raise HTTPException(status_code=409, detail="Question already completed")
 
-    correct = answers_match(data.student_answer, question["correct_answer"])
-    mistake_type = None if correct else classify_mistake(data.student_answer, question["correct_answer"])
+    exact_match = answers_match(data.student_answer, question["correct_answer"])
+    if exact_match:
+        correct = True
+        score = 100
+        mistake_type = None
+        misconception = None
+        explanation = "Correct! Great work."
+        hint = None
+        grading_source: Literal["deterministic", "ai", "fallback"] = "deterministic"
+    else:
+        try:
+            ai_result = ai_tutor.grade_answer(
+                question=question["question"],
+                correct_answer=question["correct_answer"],
+                student_answer=data.student_answer,
+                topic=question["topic"],
+                difficulty=question["difficulty"],
+            )
+            correct = ai_result["correct"]
+            score = ai_result["score"]
+            mistake_type = ai_result["mistake_type"]
+            misconception = ai_result["misconception"]
+            explanation = ai_result["explanation"]
+            hint = ai_result["hint"]
+            grading_source = "ai"
+        except ai_tutor.AITutorError:
+            correct = False
+            score = 0
+            mistake_type = classify_mistake(data.student_answer, question["correct_answer"])
+            misconception = None
+            explanation = "That answer is not correct yet. Use the hint and try again."
+            hint = make_hint(question["question"], mistake_type)
+            grading_source = "fallback"
+
     xp = 10 if correct else 0
     if correct and not questions.complete_question(student_id, data.question_id):
         raise HTTPException(status_code=409, detail="Question already completed")
     record = database.update_progress(student_id, question["topic"], correct, xp)
     return AnswerResponse(
         correct=correct,
+        score=score,
         mistake_type=mistake_type,
-        explanation="Correct! Great work." if correct else "That answer is not correct yet. Use the hint and try again.",
-        hint=None if correct else make_hint(question["question"], mistake_type),
+        misconception=misconception,
+        explanation=explanation,
+        hint=hint,
+        grading_source=grading_source,
         xp_earned=xp,
         total_xp=record["total_xp"],
         streak=record["streak"],

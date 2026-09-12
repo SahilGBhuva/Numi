@@ -10,11 +10,21 @@ export type NoteQuizContext = {
   other_units: string[]
   other_courses: string[]
 }
+export type Flashcard = { front: string; back: string; topic: string }
+export type FlashcardDeck = {
+  course: string
+  unit: string
+  personalized: boolean
+  cards: Flashcard[]
+}
 export type AnswerResult = {
   correct: boolean
+  score: number
   mistake_type: string | null
+  misconception: string | null
   explanation: string
   hint: string | null
+  grading_source: 'deterministic' | 'ai' | 'fallback'
   xp_earned: number
   total_xp: number
   streak: number
@@ -76,9 +86,25 @@ export function generateQuestion(topic: Topic, difficulty: number, notes?: NoteQ
       topic,
       difficulty,
       student_id: getStudentId(),
-      notes: notes && notes.files.length > 0 ? notes : undefined,
+      notes: notes ?? undefined,
     }),
   })
+}
+
+export function generateFlashcards(
+  context: { course: string; unit: string; files?: string[]; count?: number },
+  accessToken?: string,
+) {
+  return request<FlashcardDeck>('/api/generate-flashcards', {
+    method: 'POST',
+    body: JSON.stringify({
+      student_id: getStudentId(),
+      course: context.course,
+      unit: context.unit,
+      files: context.files ?? [],
+      count: context.count ?? 10,
+    }),
+  }, accessToken)
 }
 
 export function analyzeAnswer(question: GeneratedQuestion, studentAnswer: string, studentId: string, accessToken?: string) {
