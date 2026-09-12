@@ -90,26 +90,25 @@ type SiteSidebarProps = {
 
 export function SiteSidebar({ active }: SiteSidebarProps) {
   return (
-    <nav className="numi-rail" aria-label="Main">
-      <a className="numi-rail__brand" href="#home" aria-label="Numi home">
-        <svg className="numi-rail__gear" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="3.2" />
-          <path d="M12 3.2v2.2M12 18.6v2.2M4.8 6.3l1.6 1.6M17.6 16.1l1.6 1.6M3.2 12h2.2M18.6 12h2.2M6.3 19.2l1.6-1.6M16.1 6.4l1.6-1.6" />
-        </svg>
-        numi
+    <nav className="bindit-rail" aria-label="Main">
+      <a className="bindit-rail__brand" href="#home" aria-label="Bindit home">
+        <span className="bindit-rail__brand-mark" aria-hidden="true">
+          <img src="/bindit-mascot.webp" alt="" />
+        </span>
+        Bindit
       </a>
-      <ol className="numi-rail__list">
+      <ol className="bindit-rail__list">
         {ITEMS.map((item) => (
           <li key={item.id}>
             <a
-              className={`numi-rail__item is-${item.id} ${active === item.id ? 'is-active' : ''}`}
+              className={`bindit-rail__item is-${item.id} ${active === item.id ? 'is-active' : ''}`}
               href={`#${item.id}`}
               aria-current={active === item.id ? 'page' : undefined}
             >
-              <span className="numi-rail__icon">
+              <span className="bindit-rail__icon">
                 <Mark kind={item.id} />
               </span>
-              <span className="numi-rail__label">{item.label}</span>
+              <span className="bindit-rail__label">{item.label}</span>
             </a>
           </li>
         ))}
