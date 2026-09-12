@@ -90,9 +90,33 @@ async function request<T>(path: string, options?: RequestInit, accessToken?: str
   return response.json() as Promise<T>
 }
 
-export function uploadNote(file: File, course: string, unit: string, accessToken?: string) {
+async function optimizedImage(file: File): Promise<File> {
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const largestSide = Math.max(bitmap.width, bitmap.height)
+    if (file.size < 1_500_000 && largestSide <= 2000) {
+      bitmap.close()
+      return file
+    }
+    const scale = Math.min(1, 2000 / largestSide)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.86))
+    if (!blob || blob.size >= file.size) return file
+    return new File([blob], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp', lastModified: file.lastModified })
+  } catch {
+    return file
+  }
+}
+
+export async function uploadNote(file: File, course: string, unit: string, accessToken?: string) {
+  const preparedFile = await optimizedImage(file)
   const form = new FormData()
-  form.set('file', file)
+  form.set('file', preparedFile)
   form.set('course', course)
   form.set('unit', unit)
   return request<UploadedNote>('/api/notes', { method: 'POST', body: form }, accessToken)

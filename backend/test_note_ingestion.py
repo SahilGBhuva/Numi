@@ -19,6 +19,7 @@ class NoteIngestionTests(unittest.TestCase):
     def setUp(self):
         database.engine.cache_clear()
         database.init_db.cache_clear()
+        note_store.init_notes.cache_clear()
         note_store.init_notes()
         with database.engine().begin() as connection:
             connection.execute(note_store.notes.delete())
@@ -52,6 +53,16 @@ class NoteIngestionTests(unittest.TestCase):
         vision.assert_called_once_with(image_bytes=b"image", content_type="image/png")
         _, context = note_store.context_for("vision-student", "Biology", "Cells")
         self.assertIn("Cell membranes regulate transport", context)
+
+    def test_image_vision_uses_fast_model_and_routing(self):
+        response = {"choices": [{"message": {"content": "Fast OCR"}}]}
+        with patch.object(main.ai_tutor, "_post", return_value=response) as post:
+            self.assertEqual(main.ai_tutor.extract_image_notes(image_bytes=b"image", content_type="image/png"), "Fast OCR")
+        payload = post.call_args.args[0]
+        self.assertEqual(payload["model"], "google/gemini-3.1-flash-lite")
+        self.assertEqual(payload["provider"]["sort"], "throughput")
+        self.assertEqual(payload["reasoning"]["effort"], "minimal")
+        self.assertEqual(post.call_args.kwargs["timeout"], 8.0)
 
     def test_scanned_pdf_falls_back_to_ai_ocr(self):
         upload = UploadFile(filename="scan.pdf", file=BytesIO(b"scanned-pdf"), headers={"content-type": "application/pdf"})

@@ -10,8 +10,9 @@ import httpx
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
-OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", OPENROUTER_MODEL)
+OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3.1-flash-lite")
 OPENROUTER_TIMEOUT = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "12"))
+OPENROUTER_VISION_TIMEOUT = float(os.getenv("OPENROUTER_VISION_TIMEOUT_SECONDS", "8"))
 
 class AITutorError(RuntimeError):
     pass
@@ -40,9 +41,9 @@ def _extract_json(text: str) -> dict[str, Any]:
         raise AITutorError("AI returned an invalid response shape")
     return data
 
-def _post(payload: dict[str, Any]) -> dict[str, Any]:
+def _post(payload: dict[str, Any], *, timeout: float | None = None) -> dict[str, Any]:
     try:
-        response = _client().post(OPENROUTER_URL, headers=_headers(), json=payload)
+        response = _client().post(OPENROUTER_URL, headers=_headers(), json=payload, timeout=timeout or OPENROUTER_TIMEOUT)
         response.raise_for_status()
         return response.json()
     except (httpx.HTTPError, json.JSONDecodeError) as exc:
@@ -58,9 +59,9 @@ def _chat_json(*, system_prompt: str, data: dict[str, Any], temperature: float, 
 
 def extract_image_notes(*, image_bytes: bytes, content_type: str) -> str:
     encoded = base64.b64encode(image_bytes).decode("ascii")
-    payload = {"model": OPENROUTER_VISION_MODEL, "temperature": 0, "max_tokens": 1800, "provider": {"sort": "latency", "allow_fallbacks": True}, "messages": [{"role": "user", "content": [{"type": "text", "text": "Read this study-note image carefully. Transcribe all useful educational content, headings, labels, equations, and diagram facts. Return plain text only. Do not invent unreadable text."}, {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{encoded}"}}]}]}
+    payload = {"model": OPENROUTER_VISION_MODEL, "temperature": 0, "max_tokens": 1200, "reasoning": {"effort": "minimal"}, "provider": {"sort": "throughput", "preferred_max_latency": 2, "preferred_min_throughput": 80, "allow_fallbacks": True}, "messages": [{"role": "user", "content": [{"type": "text", "text": "Fast, accurate OCR for study notes. Return only the readable educational text, headings, labels, equations, and diagram facts. Never guess unreadable text."}, {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{encoded}"}}]}]}
     try:
-        text = _post(payload)["choices"][0]["message"]["content"].strip()
+        text = _post(payload, timeout=OPENROUTER_VISION_TIMEOUT)["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, TypeError) as exc:
         raise AITutorError("Vision model returned an unexpected response") from exc
     if not text:
@@ -69,9 +70,9 @@ def extract_image_notes(*, image_bytes: bytes, content_type: str) -> str:
 
 def extract_pdf_notes(*, pdf_bytes: bytes) -> str:
     encoded = base64.b64encode(pdf_bytes).decode("ascii")
-    payload = {"model": OPENROUTER_VISION_MODEL, "temperature": 0, "max_tokens": 2400, "provider": {"sort": "latency", "allow_fallbacks": True}, "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}], "messages": [{"role": "user", "content": [{"type": "text", "text": "OCR this scanned study-note PDF. Transcribe all useful educational text, headings, labels, equations, and diagram facts. Return plain text only and do not invent unreadable text."}, {"type": "file", "file": {"filename": "notes.pdf", "file_data": f"data:application/pdf;base64,{encoded}"}}]}]}
+    payload = {"model": OPENROUTER_VISION_MODEL, "temperature": 0, "max_tokens": 2000, "reasoning": {"effort": "minimal"}, "provider": {"sort": "throughput", "preferred_max_latency": 2, "allow_fallbacks": True}, "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}], "messages": [{"role": "user", "content": [{"type": "text", "text": "OCR this scanned study-note PDF. Return only readable educational text, headings, labels, equations, and diagram facts. Never guess unreadable text."}, {"type": "file", "file": {"filename": "notes.pdf", "file_data": f"data:application/pdf;base64,{encoded}"}}]}]}
     try:
-        text = _post(payload)["choices"][0]["message"]["content"].strip()
+        text = _post(payload, timeout=max(OPENROUTER_VISION_TIMEOUT, 12))["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, TypeError) as exc:
         raise AITutorError("PDF OCR returned an unexpected response") from exc
     if not text:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from functools import lru_cache
 
 from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, Text, delete, select
 
@@ -22,6 +23,7 @@ notes = Table(
 )
 
 
+@lru_cache(maxsize=1)
 def init_notes() -> None:
     database.init_db()
     note_metadata.create_all(database.engine())

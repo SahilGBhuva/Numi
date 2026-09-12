@@ -19,7 +19,7 @@ import note_store
 
 app = FastAPI(
     title="bindet API",
-    version="0.9.0",
+    version="0.9.1",
     description="Practice, accounts, profiles, secure progress tracking, personalized quizzes, AI flashcards, and AI tutoring.",
 )
 
