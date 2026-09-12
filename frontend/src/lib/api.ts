@@ -12,9 +12,12 @@ export type NoteQuizContext = {
 }
 export type AnswerResult = {
   correct: boolean
+  score: number
   mistake_type: string | null
+  misconception: string | null
   explanation: string
   hint: string | null
+  grading_source: 'deterministic' | 'ai' | 'fallback'
   xp_earned: number
   total_xp: number
   streak: number
@@ -76,7 +79,7 @@ export function generateQuestion(topic: Topic, difficulty: number, notes?: NoteQ
       topic,
       difficulty,
       student_id: getStudentId(),
-      notes: notes && notes.files.length > 0 ? notes : undefined,
+      notes: notes ?? undefined,
     }),
   })
 }
