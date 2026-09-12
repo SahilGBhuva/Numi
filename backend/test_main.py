@@ -128,6 +128,24 @@ class PocketTutorBackendTests(unittest.TestCase):
         self.assertEqual(len(main.database.list_uploaded_images("student-1")), 1)
         self.assertEqual(main.database.list_uploaded_images("student-2"), [])
 
+    def test_guest_progress_is_claimed_once_by_account(self):
+        main.database.update_progress("guest-1", "addition", True, 10)
+        main.database.update_progress("guest-1", "addition", False, 0)
+
+        profile = main.database.onboard_account(
+            "account-1", "bindit_learner", "Bindit Learner", "guest-1",
+        )
+        first_claim = main.database.get_progress("account-1")
+        main.database.onboard_account(
+            "account-1", "bindit_learner", "Bindit Learner", "guest-1",
+        )
+        second_claim = main.database.get_progress("account-1")
+
+        self.assertEqual(profile["username"], "bindit_learner")
+        self.assertEqual(first_claim["total_xp"], 10)
+        self.assertEqual(first_claim["attempts"], 2)
+        self.assertEqual(first_claim, second_claim)
+
     def test_friend_request_and_leaderboard_flow(self):
         alice = main.create_profile(main.ProfileCreate(
             student_id="alice-id", username="alice", display_name="Alice",

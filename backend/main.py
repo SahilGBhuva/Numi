@@ -82,6 +82,12 @@ class ProfileCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=40)
 
 
+class AccountProfileUpdate(BaseModel):
+    username: str = Field(pattern=r"^[a-z0-9_]{3,24}$")
+    display_name: str = Field(min_length=1, max_length=40)
+    guest_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+
 class ProfileResponse(BaseModel):
     student_id: str
     username: str
@@ -263,6 +269,29 @@ def get_current_account(authorization: Annotated[str | None, Header()] = None):
 def get_auth_config():
     url, anon_key = storage.public_settings()
     return {"supabase_url": url, "supabase_anon_key": anon_key}
+
+
+@app.get("/api/account/profile", response_model=ProfileResponse)
+def get_account_profile(authorization: Annotated[str | None, Header()] = None):
+    user = current_account(authorization)
+    profile = database.get_profile(user["id"])
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Finish setting up your profile")
+    return profile
+
+
+@app.put("/api/account/profile", response_model=ProfileResponse)
+def update_account_profile(
+    data: AccountProfileUpdate,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    user = current_account(authorization)
+    try:
+        return database.onboard_account(
+            user["id"], data.username, data.display_name.strip(), data.guest_id,
+        )
+    except ValueError as error:
+        raise social_error(error) from error
 
 
 @app.post("/api/images", response_model=UploadedImageResponse, status_code=201)

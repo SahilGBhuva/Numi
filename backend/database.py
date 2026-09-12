@@ -71,6 +71,13 @@ uploaded_images = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+progress_claims = Table(
+    "progress_claims", metadata,
+    Column("guest_id", String(100), primary_key=True),
+    Column("account_id", String(100), nullable=False, index=True),
+    Column("claimed_at", DateTime(timezone=True), nullable=False),
+)
+
 
 def sqlite_path() -> Path:
     configured_path = os.getenv("POCKET_TUTOR_DB_PATH")
@@ -139,6 +146,9 @@ def init_db() -> None:
     """Create/check tables once per warm process instead of on every request."""
     active_engine = engine()
     metadata.create_all(active_engine)
+    if active_engine.dialect.name == "postgresql":
+        with active_engine.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE progress_claims ENABLE ROW LEVEL SECURITY")
     if active_engine.dialect.name == "sqlite":
         columns = {column["name"] for column in inspect(active_engine).get_columns("student_progress")}
         if "last_active_date" not in columns:
@@ -332,6 +342,98 @@ def get_profile(student_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def onboard_account(account_id: str, username: str, display_name: str, guest_id: str | None = None) -> dict:
+    """Create/update an account profile and claim one guest history exactly once."""
+    init_db()
+    now = datetime.now(timezone.utc)
+    with engine().begin() as connection:
+        account_progress = connection.execute(
+            select(student_progress).where(student_progress.c.student_id == account_id)
+        ).mappings().first()
+        if account_progress is None:
+            connection.execute(student_progress.insert().values(
+                student_id=account_id, total_xp=0, attempts=0, correct_answers=0,
+                streak=0, best_streak=0, last_active_date=None, updated_at=now,
+            ))
+            account_progress = connection.execute(
+                select(student_progress).where(student_progress.c.student_id == account_id)
+            ).mappings().one()
+
+        if guest_id and guest_id != account_id:
+            already_claimed = connection.execute(
+                select(progress_claims).where(progress_claims.c.guest_id == guest_id)
+            ).first()
+            guest_progress = connection.execute(
+                select(student_progress).where(student_progress.c.student_id == guest_id)
+            ).mappings().first()
+            if not already_claimed and guest_progress is not None:
+                latest_active = max(
+                    filter(None, [account_progress["last_active_date"], guest_progress["last_active_date"]]),
+                    default=None,
+                )
+                connection.execute(
+                    update(student_progress)
+                    .where(student_progress.c.student_id == account_id)
+                    .values(
+                        total_xp=account_progress["total_xp"] + guest_progress["total_xp"],
+                        attempts=account_progress["attempts"] + guest_progress["attempts"],
+                        correct_answers=account_progress["correct_answers"] + guest_progress["correct_answers"],
+                        streak=max(account_progress["streak"], guest_progress["streak"]),
+                        best_streak=max(account_progress["best_streak"], guest_progress["best_streak"]),
+                        last_active_date=latest_active,
+                        updated_at=now,
+                    )
+                )
+                guest_topics = connection.execute(
+                    select(topic_progress).where(topic_progress.c.student_id == guest_id)
+                ).mappings().all()
+                for guest_topic in guest_topics:
+                    account_topic = connection.execute(select(topic_progress).where(
+                        topic_progress.c.student_id == account_id,
+                        topic_progress.c.topic == guest_topic["topic"],
+                    )).mappings().first()
+                    if account_topic:
+                        connection.execute(update(topic_progress).where(
+                            topic_progress.c.student_id == account_id,
+                            topic_progress.c.topic == guest_topic["topic"],
+                        ).values(
+                            attempts=account_topic["attempts"] + guest_topic["attempts"],
+                            correct_answers=account_topic["correct_answers"] + guest_topic["correct_answers"],
+                        ))
+                    else:
+                        connection.execute(topic_progress.insert().values(
+                            student_id=account_id, topic=guest_topic["topic"],
+                            attempts=guest_topic["attempts"], correct_answers=guest_topic["correct_answers"],
+                        ))
+                connection.execute(progress_claims.insert().values(
+                    guest_id=guest_id, account_id=account_id, claimed_at=now,
+                ))
+
+        username_owner = connection.execute(
+            select(profiles.c.student_id).where(profiles.c.username == username)
+        ).scalar_one_or_none()
+        if username_owner and username_owner != account_id:
+            raise ValueError("username_taken")
+        profile = connection.execute(
+            select(profiles).where(profiles.c.student_id == account_id)
+        ).mappings().first()
+        if profile:
+            connection.execute(update(profiles).where(profiles.c.student_id == account_id).values(
+                username=username, display_name=display_name,
+            ))
+        else:
+            friend_code = ""
+            while not friend_code:
+                candidate = secrets.token_hex(4).upper()
+                if not connection.execute(select(profiles).where(profiles.c.friend_code == candidate)).first():
+                    friend_code = candidate
+            connection.execute(profiles.insert().values(
+                student_id=account_id, username=username, display_name=display_name,
+                friend_code=friend_code, created_at=now,
+            ))
+    return get_profile(account_id)
+
+
 def send_friend_request(requester_id: str, friend_code: str) -> dict:
     init_db()
     with engine().begin() as connection:
@@ -431,5 +533,6 @@ def reset_db() -> None:
         connection.execute(delete(uploaded_images))
         connection.execute(delete(friendships))
         connection.execute(delete(profiles))
+        connection.execute(delete(progress_claims))
         connection.execute(delete(topic_progress))
         connection.execute(delete(student_progress))

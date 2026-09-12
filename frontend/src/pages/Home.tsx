@@ -138,7 +138,9 @@ export function Home() {
     </section>
     {accountOpen && <AccountPanel
       session={session}
+      guestId={guestId}
       onSession={changeSession}
+      onProfileSaved={() => void getProgress(studentId, accessToken).then(setProgress)}
       onClose={() => setAccountOpen(false)}
     />}
   </main>

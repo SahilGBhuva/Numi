@@ -3,6 +3,7 @@ export type GeneratedQuestion = { question: string; correct_answer: string; topi
 export type AnswerResult = { correct: boolean; mistake_type: string | null; explanation: string; hint: string | null; xp_earned: number; total_xp: number; streak: number }
 export type Progress = { student_id: string; total_xp: number; attempts: number; correct_answers: number; accuracy: number; streak: number; best_streak: number; weak_topics: string[] }
 export type UploadedImage = { id: string; original_name: string; content_type: string; size_bytes: number; created_at: string; url: string }
+export type Profile = { student_id: string; username: string; display_name: string; friend_code: string }
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -48,4 +49,22 @@ export function uploadImage(file: File, accessToken: string) {
   const body = new FormData()
   body.append('image', file)
   return request<UploadedImage>('/api/images', { method: 'POST', body }, accessToken)
+}
+
+export async function getAccountProfile(accessToken: string): Promise<Profile | null> {
+  const response = await fetch(`${API_URL}/api/account/profile`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error('Could not load your Bindit profile.')
+  return response.json() as Promise<Profile>
+}
+
+export function saveAccountProfile(
+  accessToken: string,
+  profile: { username: string; display_name: string; guest_id: string },
+) {
+  return request<Profile>('/api/account/profile', {
+    method: 'PUT', body: JSON.stringify(profile),
+  }, accessToken)
 }

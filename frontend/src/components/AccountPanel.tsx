@@ -1,27 +1,53 @@
 import { useEffect, useState } from 'react'
-import { listImages, uploadImage } from '../lib/api'
-import type { UploadedImage } from '../lib/api'
+import { getAccountProfile, listImages, saveAccountProfile, uploadImage } from '../lib/api'
+import type { Profile, UploadedImage } from '../lib/api'
 import { saveAuthSession, signIn, signOut, signUp } from '../lib/auth'
 import type { AuthSession } from '../lib/auth'
 import './AccountPanel.css'
 
 type Props = {
   session: AuthSession | null
+  guestId: string
   onSession: (session: AuthSession | null) => void
+  onProfileSaved: () => void
   onClose: () => void
 }
 
-export function AccountPanel({ session, onSession, onClose }: Props) {
+export function AccountPanel({ session, guestId, onSession, onProfileSaved, onClose }: Props) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [images, setImages] = useState<UploadedImage[]>([])
+  const [profile, setProfile] = useState<Profile | null | undefined>(undefined)
+  const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
 
   useEffect(() => {
-    if (session) void listImages(session.access_token).then(setImages).catch(() => setMessage('Could not load your images.'))
+    if (session) {
+      void listImages(session.access_token).then(setImages).catch(() => setMessage('Could not load your images.'))
+      void getAccountProfile(session.access_token).then((savedProfile) => {
+        setProfile(savedProfile)
+        if (savedProfile) {
+          setDisplayName(savedProfile.display_name)
+          setUsername(savedProfile.username)
+        }
+      }).catch(() => setMessage('Could not load your profile.'))
+    }
   }, [session])
+
+  async function saveProfile(event: React.FormEvent) {
+    event.preventDefault(); if (!session) return
+    setBusy(true); setMessage('')
+    try {
+      const saved = await saveAccountProfile(session.access_token, {
+        username: username.toLowerCase(), display_name: displayName, guest_id: guestId,
+      })
+      setProfile(saved); onProfileSaved(); setMessage('Profile saved and progress connected!')
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not save your profile.') }
+    finally { setBusy(false) }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setMessage('')
@@ -55,6 +81,12 @@ export function AccountPanel({ session, onSession, onClose }: Props) {
       <span className="eyebrow">YOUR BINDIT SPACE</span>
       {session ? <>
         <h2>Welcome back.</h2><p className="account-email">{session.user.email}</p>
+        {profile === undefined ? <p className="empty-gallery">Loading your profile…</p> : !profile ? <form className="auth-form profile-form" onSubmit={saveProfile}>
+          <p>Finish your profile to protect your progress and unlock friends.</p>
+          <label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={1} maxLength={40} autoComplete="name" placeholder="What should friends call you?"/></label>
+          <label>Username<input value={username} onChange={(event) => setUsername(event.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} required minLength={3} maxLength={24} autoComplete="username" placeholder="letters_numbers_only"/></label>
+          <button disabled={busy}>{busy ? 'Saving…' : 'Save my profile'}</button>
+        </form> : <div className="profile-summary"><div><small>PROFILE</small><strong>{profile.display_name}</strong><span>@{profile.username}</span></div><div><small>FRIEND CODE</small><strong>{profile.friend_code}</strong><span>Share this with friends</span></div></div>}
         <label className={`upload-card ${busy ? 'disabled' : ''}`}>
           <span>＋</span><strong>Add a study image</strong><small>JPG, PNG, WebP or GIF · max 5 MB</small>
           <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={chooseImage} disabled={busy}/>

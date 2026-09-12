@@ -50,6 +50,15 @@ create table if not exists uploaded_images (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists progress_claims (
+  guest_id text primary key,
+  account_id text not null,
+  claimed_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists progress_claims_account_id_idx
+  on progress_claims (account_id);
+
 create index if not exists topic_progress_student_id_idx
   on topic_progress (student_id);
 
@@ -61,6 +70,7 @@ alter table topic_progress enable row level security;
 alter table profiles enable row level security;
 alter table friendships enable row level security;
 alter table uploaded_images enable row level security;
+alter table progress_claims enable row level security;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
