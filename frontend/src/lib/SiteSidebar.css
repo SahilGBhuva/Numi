@@ -7,9 +7,7 @@
   width: 248px;
   min-height: 100vh;
   padding: 28px 22px 32px;
-  background:
-    linear-gradient(180deg, rgba(10, 20, 32, 0.55), transparent 18%),
-    repeating-linear-gradient(180deg, transparent 0 11px, rgba(232, 223, 176, 0.03) 11px 12px);
+  background: #0b1622;
   border-right: 1px solid rgba(232, 223, 176, 0.12);
 }
 
@@ -33,8 +31,6 @@
   stroke: #e0a045;
   stroke-width: 1.8;
   stroke-linecap: round;
-  transform-origin: 50% 50%;
-  animation: numi-gear 14s linear infinite;
 }
 
 .numi-rail__list {
@@ -59,11 +55,6 @@
   color: #f4efe0;
   text-decoration: none;
   outline: none;
-  transition:
-    border-color 0.18s ease,
-    color 0.18s ease,
-    background-color 0.18s ease,
-    transform 0.12s ease;
 }
 
 .numi-rail__item.is-home { --item-accent: #7eb8e8; }
@@ -80,7 +71,6 @@
   width: 38px;
   height: 38px;
   flex: none;
-  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
 }
 
 .numi-rail__icon svg {
@@ -97,7 +87,7 @@
 }
 
 .numi-rail__item:hover {
-  background: rgba(232, 223, 176, 0.05);
+  background: rgba(232, 223, 176, 0.08);
 }
 
 .numi-rail__item:focus-visible {
@@ -105,7 +95,7 @@
 }
 
 .numi-rail__item:active {
-  transform: translateY(1px);
+  background: rgba(232, 223, 176, 0.12);
 }
 
 .numi-rail__item.is-active {
@@ -136,12 +126,6 @@
 .numi-rail__item.is-active::after {
   bottom: 8px;
   right: 10px;
-}
-
-@keyframes numi-gear {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (max-width: 860px) {
@@ -179,13 +163,5 @@
   .numi-rail__item.is-active::before,
   .numi-rail__item.is-active::after {
     display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .numi-rail__gear,
-  .numi-rail__item {
-    animation: none;
-    transition: none;
   }
 }

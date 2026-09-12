@@ -266,12 +266,24 @@ export function Home() {
 
     const syncFn = () => {
       const index = Math.round(pages.scrollTop / Math.max(pages.clientHeight, 1))
-      setPanelFn((['scan', 'cards', 'quiz'] as const)[index] ?? 'scan')
+      const next = (['scan', 'cards', 'quiz'] as const)[index] ?? 'scan'
+      setPanelFn((current) => (current === next ? current : next))
+    }
+    let frame = 0
+    const onScroll = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        syncFn()
+      })
     }
 
     syncFn()
-    pages.addEventListener('scroll', syncFn, { passive: true })
-    return () => pages.removeEventListener('scroll', syncFn)
+    pages.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      pages.removeEventListener('scroll', onScroll)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
   }, [])
 
   useEffect(() => {
@@ -285,9 +297,20 @@ export function Home() {
       skipCourseScroll.current = true
       chooseCourse(course.name)
     }
+    let frame = 0
+    const onScroll = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        syncCourse()
+      })
+    }
 
-    root.addEventListener('scroll', syncCourse, { passive: true })
-    return () => root.removeEventListener('scroll', syncCourse)
+    root.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      root.removeEventListener('scroll', onScroll)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
   }, [activeCourse, courseOrderKey, coursesOpen])
 
   useLayoutEffect(() => {
@@ -319,8 +342,9 @@ export function Home() {
   }, [addingCourse])
 
   useEffect(() => {
+    if (panelFn !== 'quiz') return
     void loadQuizQuestion()
-  }, [activeCourse, activeUnit, unitNotes.length])
+  }, [activeCourse, activeUnit, unitNotes.length, panelFn])
 
   function showSoon(label: string) {
     setNotice(`${label} is not connected yet.`)
@@ -626,8 +650,8 @@ export function Home() {
                       onMouseMove={(event) => {
                         if (draggingName || renamingCourse || addingCourse) return
                         const rect = event.currentTarget.getBoundingClientRect()
-                        const nearBottom = (event.clientY - rect.top) / rect.height > 0.7
-                        setAddHintOn(nearBottom ? course.name : '')
+                        const next = (event.clientY - rect.top) / rect.height > 0.7 ? course.name : ''
+                        setAddHintOn((current) => (current === next ? current : next))
                       }}
                       onMouseLeave={() => {
                         if (!addingCourse) setAddHintOn('')

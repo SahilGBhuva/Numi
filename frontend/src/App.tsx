@@ -32,7 +32,7 @@ function App() {
       <main className="sheet">
         <span className="blob blob-a" aria-hidden="true" />
         <span className="blob blob-b" aria-hidden="true" />
-        <SiteHeader onError={setNotice} />
+        <SiteHeader />
         {screen === 'home' ? <Home /> : null}
         {screen === 'progress' ? <Progress /> : null}
         {screen === 'games' ? <Games /> : null}

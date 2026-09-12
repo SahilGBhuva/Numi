@@ -10,14 +10,12 @@
   margin: 0 auto;
   padding: 28px 0 48px;
   position: relative;
-  animation: rise-in 0.75s ease both;
 }
 
 .blob {
   position: absolute;
   z-index: 0;
   pointer-events: none;
-  filter: blur(2px);
 }
 
 .blob-a {
@@ -29,7 +27,6 @@
   background: #163048;
   opacity: 0.4;
   transform: rotate(-12deg);
-  animation: drift-a 22s ease-in-out infinite;
 }
 
 .blob-b {
@@ -41,7 +38,6 @@
   background: #123040;
   opacity: 0.4;
   transform: rotate(18deg);
-  animation: drift-b 28s ease-in-out infinite;
 }
 
 .sheet > *:not(.blob) {
@@ -50,25 +46,10 @@
 }
 
 .sheet__top {
-  display: grid;
-  grid-template-columns: minmax(0, var(--banner-width)) 72px;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 24px;
-}
-
-.profile-pill {
-  position: relative;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
-  width: 100%;
-  height: 76px;
-  padding: 0 20px;
-  border: 1px solid var(--ink);
-  border-radius: 32px;
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  box-shadow: none;
+  margin-bottom: 24px;
 }
 
 .avatar {
@@ -84,7 +65,6 @@
   text-decoration: none;
   overflow: hidden;
   padding: 0;
-  transition: filter 0.2s ease;
 }
 
 .avatar.has-photo {
@@ -111,8 +91,7 @@
   font-size: 27px;
   font-weight: 700;
   background: radial-gradient(circle at 30% 28%, #e8b86a, #c45c3c 62%, #7a2e28);
-  animation: logo-breathe 7s ease-in-out infinite;
-  transition: filter 0.2s ease;
+  transition: none;
 }
 
 .sheet__row {
@@ -148,7 +127,6 @@
   border: 1px solid rgba(232, 223, 176, 0.28);
   border-radius: 52px;
   background: var(--glass);
-  backdrop-filter: blur(12px);
   box-shadow: none;
 }
 
@@ -184,7 +162,6 @@
   border-radius: 50%;
   background: var(--surface-2);
   cursor: pointer;
-  transition: filter 0.2s ease;
   z-index: 3;
 }
 
@@ -198,7 +175,6 @@
   border: 1px solid rgba(232, 223, 176, 0.28);
   border-radius: 28px;
   background: var(--glass);
-  backdrop-filter: blur(12px);
 }
 
 .order-bar__pop {
@@ -218,7 +194,6 @@
   width: 30px;
   height: 30px;
   overflow: visible;
-  animation: wrench-idle 3.2s ease-in-out infinite;
   transform-origin: 50% 50%;
 }
 
@@ -228,8 +203,7 @@
   stroke-width: 1.15;
   stroke-linejoin: round;
   stroke-linecap: round;
-  filter: drop-shadow(0.6px 0.9px 0 #3f3f3c);
-  transition: fill 0.22s ease, stroke 0.22s ease, filter 0.22s ease;
+  transition: fill 0.12s ease, stroke 0.12s ease;
 }
 
 .popup-mark__ghost {
@@ -243,14 +217,13 @@
 
 .order-bar__pop:hover .popup-mark,
 .order-bar__pop.is-open .popup-mark {
-  animation: wrench-hover 0.7s ease-in-out infinite;
+  transform: rotate(12deg);
 }
 
 .order-bar__pop:hover .popup-mark__body,
 .order-bar__pop.is-open .popup-mark__body {
   fill: #c5c5be;
   stroke: #ecece6;
-  filter: drop-shadow(0 0 7px rgba(210, 210, 200, 0.35));
 }
 
 .order-bar__pop:active .popup-mark {
@@ -288,8 +261,7 @@
   border-radius: 999px;
   border: 1px solid rgba(232, 223, 176, 0.45);
   cursor: pointer;
-  animation: tick-bob 2.8s ease-in-out infinite;
-  transition: filter 0.2s ease, border-color 0.2s ease;
+  transition: border-color 0.12s ease;
 }
 
 .order-bar__ticks li.is-on button {
@@ -297,7 +269,7 @@
 }
 
 .order-bar__ticks button:hover {
-  filter: brightness(1.18);
+  border-color: var(--ink);
 }
 
 .order-pop {
@@ -437,7 +409,7 @@
   color: inherit;
   font-size: 9px;
   cursor: pointer;
-  transition: filter 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .order-pop__shift button:disabled {
@@ -455,7 +427,7 @@
   font: inherit;
   font-weight: 800;
   cursor: pointer;
-  transition: filter 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .course-pages {
@@ -517,7 +489,6 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(232, 223, 176, 0.75);
-  animation: hint-pulse 3.2s ease-in-out infinite;
 }
 
 .course-card.is-dragging {
@@ -565,7 +536,7 @@
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
-  transition: filter 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .course-card--rename {
@@ -615,7 +586,7 @@
   font-weight: 700;
   cursor: pointer;
   color: inherit;
-  transition: filter 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .course-trash {
@@ -630,7 +601,7 @@
   color: var(--ink);
   cursor: pointer;
   box-shadow: none;
-  transition: filter 0.2s ease, background-color 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .course-trash.is-hot {
@@ -671,7 +642,7 @@
   text-transform: uppercase;
   cursor: pointer;
   box-shadow: none;
-  transition: filter 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .toolbox b {
@@ -726,7 +697,7 @@
   -webkit-font-smoothing: antialiased;
   cursor: pointer;
   box-shadow: none;
-  transition: background-color 0.22s ease, filter 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .unit-tab.is-active {
@@ -876,7 +847,6 @@
   background: var(--course-tone, var(--coral));
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%);
   transform-origin: 50% 0;
-  animation: tab-sway 5.5s ease-in-out infinite;
 }
 
 .frame {
@@ -889,7 +859,7 @@
   border: 1px solid var(--ink);
   background: var(--surface);
   cursor: pointer;
-  transition: filter 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .camera-mark {
@@ -900,7 +870,6 @@
   stroke-width: 2.2;
   stroke-linejoin: round;
   transform-origin: 50% 50%;
-  animation: cam-float 6.5s ease-in-out infinite;
 }
 
 .camera-mark__body { fill: #15283a; }
@@ -922,7 +891,7 @@
   font-weight: 700;
   cursor: pointer;
   box-shadow: none;
-  transition: filter 0.2s ease, background-color 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .send:disabled {
@@ -1084,7 +1053,7 @@
   font-weight: 800;
   cursor: pointer;
   box-shadow: none;
-  transition: filter 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .flash__nav button:disabled {
@@ -1165,7 +1134,7 @@
   font: inherit;
   font-weight: 700;
   cursor: pointer;
-  transition: filter 0.2s ease, background-color 0.2s ease;
+  transition: background-color 0.12s ease;
 }
 
 .sketch-pick__button {
@@ -1351,7 +1320,6 @@
     width: calc(100% - 24px);
   }
 
-  .sheet__top,
   .sheet__row,
   .sheet__row.is-collapsed,
   .panel-page--scan {
@@ -1431,8 +1399,6 @@
   }
 }
 
-.avatar:hover,
-.logo:hover,
 .collapse:hover,
 .courses .plus:hover,
 .add-course button:hover,
@@ -1447,7 +1413,12 @@
 .course-add-pop__open:hover,
 .order-pop__done:hover,
 .order-pop__shift button:hover:not(:disabled) {
-  filter: brightness(1.14);
+  background-color: var(--surface-2);
+}
+
+.logo:hover,
+.avatar:hover {
+  box-shadow: 0 0 0 2px rgba(232, 223, 176, 0.35);
 }
 
 @keyframes rise-in {

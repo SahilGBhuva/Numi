@@ -7,7 +7,7 @@
     linear-gradient(180deg, rgba(18, 38, 58, 0.96), rgba(10, 22, 36, 0.96)),
     repeating-linear-gradient(-12deg, transparent 0 10px, rgba(232, 223, 176, 0.04) 10px 11px);
   box-shadow: none;
-  animation: rise-in 0.7s ease both;
+  animation: rise-in 0.35s ease both;
 }
 
 @keyframes rise-in {
