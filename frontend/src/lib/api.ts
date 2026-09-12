@@ -67,6 +67,18 @@ export type Profile = {
   login_streak: number
   best_login_streak: number
 }
+export type Friend = {
+  student_id: string
+  username: string
+  display_name: string
+  avatar_path: string
+  total_xp: number
+  streak: number
+  active_today: boolean
+}
+export type FriendRequest = { request_id: number; username: string; display_name: string; created_at: string }
+export type FriendQuest = { id: number; friend_id: string; friend_name: string; target_xp: number; progress_xp: number; status: string; expires_at: string }
+export type FriendsHub = { friends: Friend[]; requests: FriendRequest[]; leaderboard: Friend[]; quests: FriendQuest[] }
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -194,4 +206,24 @@ export function saveAccountProfile(
     method: 'PUT',
     body: JSON.stringify(profile),
   }, accessToken)
+}
+
+export function getFriends(accessToken: string) {
+  return request<FriendsHub>('/api/friends', undefined, accessToken)
+}
+
+export function sendFriendRequest(friendCode: string, accessToken: string) {
+  return request('/api/friends/requests', { method: 'POST', body: JSON.stringify({ friend_code: friendCode }) }, accessToken)
+}
+
+export function answerFriendRequest(requestId: number, accept: boolean, accessToken: string) {
+  return request(`/api/friends/requests/${requestId}`, { method: 'POST', body: JSON.stringify({ accept }) }, accessToken)
+}
+
+export function removeFriend(friendId: string, accessToken: string) {
+  return request(`/api/friends/${encodeURIComponent(friendId)}`, { method: 'DELETE' }, accessToken)
+}
+
+export function startFriendQuest(friendId: string, accessToken: string) {
+  return request<FriendQuest>('/api/friend-quests', { method: 'POST', body: JSON.stringify({ friend_id: friendId, target_xp: 100 }) }, accessToken)
 }
