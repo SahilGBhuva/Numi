@@ -256,7 +256,11 @@ def auth_config():
 @app.get('/api/auth/me')
 def auth_me(authorization: Annotated[str | None, Header()] = None):
     user = auth.authenticated_user(authorization)
-    return {'id': user['id'], 'email': user.get('email')}
+    return {
+        'id': user['id'],
+        'email': user.get('email'),
+        'username': (user.get('user_metadata') or {}).get('username'),
+    }
 
 
 @app.post('/api/analyze-answer', response_model=AnswerResponse)

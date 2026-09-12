@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { loadAuthSession, refreshAuthSession, signIn, signOut, signUp, type AuthSession } from '../lib/auth'
+import { AuthContext } from '../lib/AuthContext'
 import './AuthGate.css'
 import '../Brand.css'
 
@@ -201,5 +202,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     )
   }
 
-  return <>{children}<button className="auth-logout" type="button" onClick={() => { signOut(); setSession(null) }}>Log out</button></>
+  return (
+    <AuthContext.Provider value={{ session, setSession }}>
+      {children}
+      <button className="auth-logout" type="button" onClick={() => { signOut(); setSession(null) }}>Log out</button>
+    </AuthContext.Provider>
+  )
 }
