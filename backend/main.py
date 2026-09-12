@@ -73,6 +73,13 @@ class QuestionResponse(BaseModel):
     difficulty: int
 
 
+class TopicStat(BaseModel):
+    topic: str
+    attempts: int
+    correct_answers: int
+    accuracy: float
+
+
 class ProgressResponse(BaseModel):
     student_id: str
     total_xp: int
@@ -81,7 +88,10 @@ class ProgressResponse(BaseModel):
     accuracy: float
     streak: int
     best_streak: int
+    login_streak: int = 0
+    best_login_streak: int = 0
     weak_topics: list[str]
+    topics: list[TopicStat] = Field(default_factory=list)
 
 
 class AccountProfileUpdate(BaseModel):
@@ -102,6 +112,8 @@ class ProfileResponse(BaseModel):
     total_xp: int = 0
     streak: int = 0
     best_streak: int = 0
+    login_streak: int = 0
+    best_login_streak: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -259,7 +271,7 @@ def generate_notes_question(notes: NoteContext, difficulty: int) -> QuestionResp
         pool.append((f'How many notes besides “{file_name}” are in {unit}?', str(len(files) - 1)))
 
     question, answer = random.choice(pool)
-    return QuestionResponse(question=question, correct_answer=str(answer), topic="notes", difficulty=difficulty)
+    return QuestionResponse(question=question, correct_answer=str(answer), topic=unit, difficulty=difficulty)
 
 
 @app.get("/")
@@ -302,12 +314,28 @@ def get_auth_config():
     return {"supabase_url": url, "supabase_anon_key": anon_key}
 
 
+def _topic_stats(record: dict) -> list[TopicStat]:
+    stats: list[TopicStat] = []
+    for topic, row in record.get("topics", {}).items():
+        attempts = row["attempts"]
+        correct = row["correct"]
+        accuracy = round(correct / attempts * 100, 1) if attempts else 0.0
+        stats.append(TopicStat(topic=topic, attempts=attempts, correct_answers=correct, accuracy=accuracy))
+    stats.sort(key=lambda item: (-item.attempts, item.topic.lower()))
+    return stats
+
+
 @app.get("/api/account/profile", response_model=ProfileResponse)
 def get_account_profile(authorization: Annotated[str | None, Header()] = None):
     user = current_account(authorization)
+    database.record_daily_login(user["id"])
     profile = database.get_profile(user["id"])
     if profile is None:
         raise HTTPException(status_code=404, detail="Finish setting up your profile")
+    progress = database.get_progress(user["id"])
+    if progress:
+        profile["login_streak"] = progress.get("login_streak", 0)
+        profile["best_login_streak"] = progress.get("best_login_streak", 0)
     return profile
 
 
@@ -383,5 +411,40 @@ def get_progress(student_id: str, authorization: Annotated[str | None, Header()]
         accuracy=accuracy,
         streak=record["streak"],
         best_streak=record["best_streak"],
+        login_streak=record.get("login_streak", 0),
+        best_login_streak=record.get("best_login_streak", 0),
         weak_topics=weak_topics,
+        topics=_topic_stats(record),
+    )
+
+
+class DailyLoginRequest(BaseModel):
+    student_id: str = Field(min_length=1, max_length=100)
+
+
+@app.post("/api/daily-login", response_model=ProgressResponse)
+@app.post("/daily-login", response_model=ProgressResponse, include_in_schema=False)
+def daily_login(data: DailyLoginRequest, authorization: Annotated[str | None, Header()] = None):
+    student_id = data.student_id
+    if authorization:
+        student_id = current_account(authorization)["id"]
+    record = database.record_daily_login(student_id)
+    accuracy = round(record["correct_answers"] / record["attempts"] * 100, 1) if record["attempts"] else 0.0
+    weak_topics = [
+        topic
+        for topic, stats in record["topics"].items()
+        if stats["attempts"] >= 2 and stats["correct"] / stats["attempts"] < 0.6
+    ]
+    return ProgressResponse(
+        student_id=student_id,
+        total_xp=record["total_xp"],
+        attempts=record["attempts"],
+        correct_answers=record["correct_answers"],
+        accuracy=accuracy,
+        streak=record["streak"],
+        best_streak=record["best_streak"],
+        login_streak=record.get("login_streak", 0),
+        best_login_streak=record.get("best_login_streak", 0),
+        weak_topics=weak_topics,
+        topics=_topic_stats(record),
     )

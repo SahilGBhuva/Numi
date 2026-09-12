@@ -30,6 +30,9 @@ student_progress = Table(
     Column("streak", Integer, nullable=False, default=0),
     Column("best_streak", Integer, nullable=False, default=0),
     Column("last_active_date", Date),
+    Column("login_streak", Integer, nullable=False, default=0),
+    Column("best_login_streak", Integer, nullable=False, default=0),
+    Column("last_login_date", Date),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
@@ -157,12 +160,23 @@ def init_db() -> None:
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_path varchar(500) NOT NULL DEFAULT ''")
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS daily_goal integer NOT NULL DEFAULT 20")
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT timezone('utc', now())")
+            connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN IF NOT EXISTS login_streak integer NOT NULL DEFAULT 0")
+            connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN IF NOT EXISTS best_login_streak integer NOT NULL DEFAULT 0")
+            connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN IF NOT EXISTS last_login_date date")
     if active_engine.dialect.name == "sqlite":
         columns = {column["name"] for column in inspect(active_engine).get_columns("student_progress")}
         if "last_active_date" not in columns:
             with active_engine.begin() as connection:
                 connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN last_active_date DATE")
                 connection.execute(update(student_progress).values(streak=0, best_streak=0))
+        columns = {column["name"] for column in inspect(active_engine).get_columns("student_progress")}
+        with active_engine.begin() as connection:
+            if "login_streak" not in columns:
+                connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN login_streak INTEGER NOT NULL DEFAULT 0")
+            if "best_login_streak" not in columns:
+                connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN best_login_streak INTEGER NOT NULL DEFAULT 0")
+            if "last_login_date" not in columns:
+                connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN last_login_date DATE")
         profile_columns = {column["name"] for column in inspect(active_engine).get_columns("profiles")}
         with active_engine.begin() as connection:
             if "avatar_path" not in profile_columns:
@@ -182,6 +196,14 @@ def _next_streak(current_streak: int, last_active: date | None, correct: bool, t
     return 1
 
 
+def _next_login_streak(current_streak: int, last_login: date | None, today: date) -> int:
+    if last_login == today:
+        return current_streak
+    if last_login == today - timedelta(days=1):
+        return current_streak + 1
+    return 1
+
+
 def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict:
     init_db()
     today = date.today()
@@ -193,7 +215,9 @@ def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict
         if progress is None:
             connection.execute(student_progress.insert().values(
                 student_id=student_id, total_xp=0, attempts=0, correct_answers=0,
-                streak=0, best_streak=0, last_active_date=None, updated_at=now,
+                streak=0, best_streak=0, last_active_date=None,
+                login_streak=0, best_login_streak=0, last_login_date=None,
+                updated_at=now,
             ))
             progress = connection.execute(
                 select(student_progress).where(student_progress.c.student_id == student_id)
@@ -252,6 +276,61 @@ def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict
         "correct_answers": updated["correct_answers"],
         "streak": updated["streak"],
         "best_streak": updated["best_streak"],
+        "login_streak": updated.get("login_streak", 0),
+        "best_login_streak": updated.get("best_login_streak", 0),
+        "topics": {
+            row["topic"]: {"attempts": row["attempts"], "correct": row["correct_answers"]}
+            for row in topics
+        },
+    }
+
+
+def record_daily_login(student_id: str) -> dict:
+    init_db()
+    today = date.today()
+    now = datetime.now(timezone.utc)
+    with engine().begin() as connection:
+        progress = connection.execute(
+            select(student_progress).where(student_progress.c.student_id == student_id)
+        ).mappings().first()
+        if progress is None:
+            connection.execute(student_progress.insert().values(
+                student_id=student_id, total_xp=0, attempts=0, correct_answers=0,
+                streak=0, best_streak=0, last_active_date=None,
+                login_streak=1, best_login_streak=1, last_login_date=today,
+                updated_at=now,
+            ))
+        elif progress["last_login_date"] != today:
+            login_streak = _next_login_streak(
+                progress.get("login_streak", 0),
+                progress.get("last_login_date"),
+                today,
+            )
+            connection.execute(
+                update(student_progress)
+                .where(student_progress.c.student_id == student_id)
+                .values(
+                    login_streak=login_streak,
+                    best_login_streak=max(progress.get("best_login_streak", 0), login_streak),
+                    last_login_date=today,
+                    updated_at=now,
+                )
+            )
+        progress = connection.execute(
+            select(student_progress).where(student_progress.c.student_id == student_id)
+        ).mappings().one()
+        topics = connection.execute(
+            select(topic_progress).where(topic_progress.c.student_id == student_id)
+        ).mappings().all()
+    return {
+        "student_id": progress["student_id"],
+        "total_xp": progress["total_xp"],
+        "attempts": progress["attempts"],
+        "correct_answers": progress["correct_answers"],
+        "streak": progress["streak"],
+        "best_streak": progress["best_streak"],
+        "login_streak": progress.get("login_streak", 0),
+        "best_login_streak": progress.get("best_login_streak", 0),
         "topics": {
             row["topic"]: {"attempts": row["attempts"], "correct": row["correct_answers"]}
             for row in topics
@@ -320,6 +399,8 @@ def get_progress(student_id: str) -> dict | None:
         "correct_answers": progress["correct_answers"],
         "streak": progress["streak"],
         "best_streak": progress["best_streak"],
+        "login_streak": progress.get("login_streak", 0),
+        "best_login_streak": progress.get("best_login_streak", 0),
         "topics": {
             row["topic"]: {"attempts": row["attempts"], "correct": row["correct_answers"]}
             for row in topics
@@ -338,7 +419,9 @@ def create_profile(student_id: str, username: str, display_name: str) -> dict:
         if not connection.execute(select(student_progress).where(student_progress.c.student_id == student_id)).first():
             connection.execute(student_progress.insert().values(
                 student_id=student_id, total_xp=0, attempts=0, correct_answers=0,
-                streak=0, best_streak=0, last_active_date=None, updated_at=now,
+                streak=0, best_streak=0, last_active_date=None,
+                login_streak=0, best_login_streak=0, last_login_date=None,
+                updated_at=now,
             ))
         friend_code = ""
         while not friend_code:

@@ -9,6 +9,9 @@ create table if not exists student_progress (
   streak integer not null default 0,
   best_streak integer not null default 0,
   last_active_date date,
+  login_streak integer not null default 0,
+  best_login_streak integer not null default 0,
+  last_login_date date,
   updated_at timestamptz not null default timezone('utc', now())
 );
 

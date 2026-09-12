@@ -1,7 +1,7 @@
 import { WrenchMark } from './WrenchMark'
 import './SiteSidebar.css'
 
-export const SCREENS = ['home', 'tools', 'progress', 'games', 'quests', 'profile', 'settings', 'more'] as const
+export const SCREENS = ['home', 'tools', 'progress', 'games', 'goals', 'profile', 'settings', 'more'] as const
 export type Screen = (typeof SCREENS)[number]
 
 const ITEMS: { id: Screen; label: string }[] = [
@@ -9,7 +9,7 @@ const ITEMS: { id: Screen; label: string }[] = [
   { id: 'tools', label: 'Tools' },
   { id: 'progress', label: 'Progress' },
   { id: 'games', label: 'Games' },
-  { id: 'quests', label: 'Quests' },
+  { id: 'goals', label: 'Goals' },
   { id: 'profile', label: 'Profile' },
   { id: 'settings', label: 'Settings' },
   { id: 'more', label: 'More' },
@@ -26,7 +26,7 @@ function Mark({ kind }: { kind: Screen }) {
     )
   }
   if (kind === 'tools') {
-    return <WrenchMark />
+    return <WrenchMark variant="sidebar" className="wrench-mark wrench-mark--sidebar" />
   }
   if (kind === 'progress') {
     return (
@@ -48,7 +48,7 @@ function Mark({ kind }: { kind: Screen }) {
       </svg>
     )
   }
-  if (kind === 'quests') {
+  if (kind === 'goals') {
     return (
       <svg viewBox="0 0 32 32" aria-hidden="true">
         <path fill="#e0a045" d="M7 6h18v21l-9-3.4L7 27z" />

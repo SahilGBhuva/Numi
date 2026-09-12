@@ -8,7 +8,20 @@ export type NoteQuizContext = {
   other_courses: string[]
 }
 export type AnswerResult = { correct: boolean; mistake_type: string | null; explanation: string; hint: string | null; xp_earned: number; total_xp: number; streak: number }
-export type Progress = { student_id: string; total_xp: number; attempts: number; correct_answers: number; accuracy: number; streak: number; best_streak: number; weak_topics: string[] }
+export type TopicStat = { topic: string; attempts: number; correct_answers: number; accuracy: number }
+export type Progress = {
+  student_id: string
+  total_xp: number
+  attempts: number
+  correct_answers: number
+  accuracy: number
+  streak: number
+  best_streak: number
+  login_streak: number
+  best_login_streak: number
+  weak_topics: string[]
+  topics: TopicStat[]
+}
 export type Profile = {
   student_id: string
   username: string
@@ -19,6 +32,8 @@ export type Profile = {
   total_xp: number
   streak: number
   best_streak: number
+  login_streak: number
+  best_login_streak: number
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -30,7 +45,7 @@ async function request<T>(path: string, options?: RequestInit, accessToken?: str
   const response = await fetch(`${API_URL}${path}`, { ...options, headers })
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(data?.detail ?? `Bindit could not complete that request (${response.status}).`)
+    throw new Error(data?.detail ?? `Bindet could not complete that request (${response.status}).`)
   }
   return response.json() as Promise<T>
 }
@@ -55,7 +70,7 @@ export async function getProgress(studentId: string, accessToken?: string): Prom
   if (response.status === 404) return null
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(data?.detail ?? `Bindit could not load progress (${response.status}).`)
+    throw new Error(data?.detail ?? `Bindet could not load progress (${response.status}).`)
   }
   return response.json() as Promise<Progress>
 }
@@ -65,8 +80,15 @@ export async function getAccountProfile(accessToken: string): Promise<Profile | 
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (response.status === 404) return null
-  if (!response.ok) throw new Error('Could not load your Bindit profile.')
+  if (!response.ok) throw new Error('Could not load your Bindet profile.')
   return response.json() as Promise<Profile>
+}
+
+export function recordDailyLogin(studentId: string, accessToken?: string) {
+  return request<Progress>('/api/daily-login', {
+    method: 'POST',
+    body: JSON.stringify({ student_id: studentId }),
+  }, accessToken)
 }
 
 export function saveAccountProfile(

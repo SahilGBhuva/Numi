@@ -50,7 +50,7 @@ class PocketTutorBackendTests(unittest.TestCase):
         )
         self.assertTrue(question.question)
         self.assertTrue(question.correct_answer)
-        self.assertEqual(question.topic, "notes")
+        self.assertEqual(question.topic, "Heredity")
         self.assertTrue(
             "Heredity" in question.question
             or "Biology" in question.question
@@ -135,6 +135,31 @@ class PocketTutorBackendTests(unittest.TestCase):
         with self.assertRaises(main.HTTPException) as missing:
             main.get_account_profile(None)
         self.assertEqual(missing.exception.status_code, 401)
+
+    def test_daily_login_streak_increments_once_per_day(self):
+        first = main.daily_login(main.DailyLoginRequest(student_id="login-student"))
+        second = main.daily_login(main.DailyLoginRequest(student_id="login-student"))
+        self.assertEqual(first.login_streak, 1)
+        self.assertEqual(second.login_streak, 1)
+        self.assertEqual(first.best_login_streak, 1)
+
+    def test_unit_accuracy_tracked_per_topic(self):
+        correct = main.AnswerRequest(
+            question="What is 2 + 2?",
+            student_answer="4",
+            correct_answer="4",
+            student_id="unit-student",
+            topic="addition",
+        )
+        wrong = correct.model_copy(update={"student_answer": "5"})
+        main.analyze_answer(correct)
+        main.analyze_answer(wrong)
+        progress = main.get_progress("unit-student")
+        self.assertEqual(len(progress.topics), 1)
+        self.assertEqual(progress.topics[0].topic, "addition")
+        self.assertEqual(progress.topics[0].attempts, 2)
+        self.assertEqual(progress.topics[0].correct_answers, 1)
+        self.assertEqual(progress.topics[0].accuracy, 50.0)
 
     def test_analyze_answer_uses_verified_account_id(self):
         request = main.AnswerRequest(
