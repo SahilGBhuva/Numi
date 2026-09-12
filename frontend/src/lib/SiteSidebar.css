@@ -130,15 +130,18 @@
 @media (max-width: 860px) {
   .bindit-rail {
     width: 100%;
+    min-width: 0;
+    max-width: 100vw;
     min-height: 0;
     padding: 12px 12px 4px;
+    overflow: hidden;
     border-right: 0;
     border-bottom: 1px solid rgba(232, 223, 176, 0.12);
   }
 
   .bindit-rail__brand { margin: 0 4px 10px; font-size: 26px; }
   .bindit-rail__brand-mark { width: 32px; height: 32px; border-radius: 10px; }
-  .bindit-rail__list { flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 8px; }
+  .bindit-rail__list { width: 100%; min-width: 0; flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 8px; }
   .bindit-rail__item { min-height: 48px; padding: 6px 10px; flex: none; }
   .bindit-rail__label { font-size: 12px; letter-spacing: 0.06em; }
   .bindit-rail__item.is-active::before,
