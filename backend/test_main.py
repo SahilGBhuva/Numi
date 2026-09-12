@@ -87,8 +87,42 @@ class BinditBackendTests(unittest.TestCase):
         )
         progress = main.database.get_progress('guest-1')
         self.assertTrue(result.correct)
+        self.assertEqual(result.score, 100)
+        self.assertEqual(result.grading_source, 'deterministic')
         self.assertEqual(result.xp_earned, 10)
         self.assertEqual(progress['total_xp'], 10)
+
+    def test_ai_grades_non_exact_answer(self):
+        question_id = self.save_math_question('guest-1')
+        ai_result = {
+            'correct': False,
+            'score': 50,
+            'mistake_type': 'calculation_error',
+            'misconception': 'Added one too many.',
+            'explanation': 'Your setup is close, but 2 + 2 equals 4.',
+            'hint': 'Count two more from 2.',
+        }
+        with patch.object(main.ai_tutor, 'grade_answer', return_value=ai_result):
+            result = main.analyze_answer(
+                main.AnswerRequest(question_id=question_id, student_answer='5', student_id='guest-1')
+            )
+        self.assertFalse(result.correct)
+        self.assertEqual(result.score, 50)
+        self.assertEqual(result.grading_source, 'ai')
+        self.assertEqual(result.mistake_type, 'calculation_error')
+        self.assertEqual(result.misconception, 'Added one too many.')
+
+    def test_ai_failure_falls_back_safely(self):
+        question_id = self.save_math_question('guest-1')
+        with patch.object(main.ai_tutor, 'grade_answer', side_effect=main.ai_tutor.AITutorError('offline')):
+            result = main.analyze_answer(
+                main.AnswerRequest(question_id=question_id, student_answer='5', student_id='guest-1')
+            )
+        self.assertFalse(result.correct)
+        self.assertEqual(result.score, 0)
+        self.assertEqual(result.grading_source, 'fallback')
+        self.assertEqual(result.mistake_type, 'off_by_one')
+        self.assertTrue(result.hint)
 
     def test_authenticated_identity_overrides_spoofed_student_id(self):
         question_id = self.save_math_question('account-1')
@@ -110,7 +144,8 @@ class BinditBackendTests(unittest.TestCase):
 
     def test_wrong_answer_can_be_retried(self):
         question_id = self.save_math_question('guest-1')
-        wrong = main.analyze_answer(main.AnswerRequest(question_id=question_id, student_answer='5', student_id='guest-1'))
+        with patch.object(main.ai_tutor, 'grade_answer', side_effect=main.ai_tutor.AITutorError('offline')):
+            wrong = main.analyze_answer(main.AnswerRequest(question_id=question_id, student_answer='5', student_id='guest-1'))
         correct = main.analyze_answer(main.AnswerRequest(question_id=question_id, student_answer='4', student_id='guest-1'))
         progress = main.database.get_progress('guest-1')
         self.assertFalse(wrong.correct)
@@ -162,7 +197,8 @@ class BinditBackendTests(unittest.TestCase):
 
     def test_unit_accuracy_is_returned_per_topic(self):
         q1 = self.save_math_question('unit-student')
-        main.analyze_answer(main.AnswerRequest(question_id=q1, student_answer='5', student_id='unit-student'))
+        with patch.object(main.ai_tutor, 'grade_answer', side_effect=main.ai_tutor.AITutorError('offline')):
+            main.analyze_answer(main.AnswerRequest(question_id=q1, student_answer='5', student_id='unit-student'))
         q2 = self.save_math_question('unit-student')
         main.analyze_answer(main.AnswerRequest(question_id=q2, student_answer='4', student_id='unit-student'))
         progress = main.get_progress('unit-student')
