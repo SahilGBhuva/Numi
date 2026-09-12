@@ -1,10 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { analyzeAnswer, generateQuestion, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
 import { recordUnitAttempt } from '../lib/progress'
-import { getStudentId, loadNotebook, notesFor, pickCourseTone, saveNotebook, unitsFor, withCourseTones } from '../lib/session'
+import {
+  fileToCourseImageDataUrl,
+  getStudentId,
+  loadNotebook,
+  notesFor,
+  pickCourseTone,
+  saveNotebook,
+  unitsFor,
+  withCourseTones,
+} from '../lib/session'
 import type { Course, NoteDeposit } from '../lib/types'
-import { WrenchMark } from '../lib/WrenchMark'
 import './Home.css'
 
 const QUIZ_TOPICS: { id: Topic; label: string }[] = [
@@ -40,6 +48,17 @@ function TrashMark() {
 
 function courseTone(course: { name: string; tone?: string }) {
   return course.tone ?? withCourseTones([{ name: course.name, units: [] }])[0].tone ?? '#2a6ea8'
+}
+
+function courseLookStyle(course: { name: string; tone?: string; image?: string }): CSSProperties {
+  const tone = courseTone(course)
+  if (!course.image) return { backgroundColor: tone }
+  return {
+    backgroundColor: tone,
+    backgroundImage: `linear-gradient(180deg, rgba(8, 16, 26, 0.08), rgba(8, 16, 26, 0.62)), url("${course.image}")`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  }
 }
 
 function GripMark() {
@@ -168,6 +187,10 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   const [quizMenu, setQuizMenu] = useState<'topic' | 'level' | null>(null)
   const [orderOpen, setOrderOpen] = useState(false)
   const [orderDrag, setOrderDrag] = useState('')
+  const [lookCourse, setLookCourse] = useState('')
+  const [lookBusy, setLookBusy] = useState(false)
+  const [lookHint, setLookHint] = useState('')
+  const courseImageInput = useRef<HTMLInputElement>(null)
   const orderDragIndex = useRef(-1)
   const studentId = useRef(getStudentId())
 
@@ -179,6 +202,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   const activeUnit = notebook.activeUnit
   const units = unitsFor(courses, activeCourse)
   const activeTone = courseTone(courses.find((course) => course.name === activeCourse) ?? { name: activeCourse })
+  const looking = courses.find((course) => course.name === lookCourse) ?? courses.find((course) => course.name === activeCourse)
   const unitNotes = notesFor(notebook.deposits, activeCourse, activeUnit)
   const deck =
     unitNotes.length > 0
@@ -424,7 +448,36 @@ export function Tools({ accessToken }: { accessToken?: string }) {
       deposits: current.deposits.map((item) => (item.course === from ? { ...item, course: to } : item)),
       activeCourse: current.activeCourse === from ? to : current.activeCourse,
     }))
+    setLookCourse((current) => (current === from ? to : current))
     cancelRenameCourse()
+  }
+
+  function setCourseImage(name: string, image: string | undefined) {
+    setNotebook((current) => ({
+      ...current,
+      courses: current.courses.map((course) => (course.name === name ? { ...course, image } : course)),
+    }))
+  }
+
+  async function applyCourseImage(file: File | null) {
+    const name = looking?.name
+    if (!name || !file) return
+    if (!file.type.startsWith('image/')) {
+      setLookHint('Pick a photo or image file.')
+      return
+    }
+    setLookBusy(true)
+    setLookHint('')
+    try {
+      const image = await fileToCourseImageDataUrl(file)
+      setCourseImage(name, image)
+      setLookHint(`Cover added to ${name}.`)
+    } catch {
+      setLookHint('Could not read that image. Try another photo.')
+    } finally {
+      setLookBusy(false)
+      if (courseImageInput.current) courseImageInput.current.value = ''
+    }
   }
 
   function removeCourse(name: string) {
@@ -444,6 +497,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
       return { ...current, courses, deposits, activeCourse, activeUnit }
     })
     setNotice(`Removed “${name}”.`)
+    setLookCourse((current) => (current === name ? '' : current))
   }
 
   function chooseUnit(name: string) {
@@ -643,8 +697,8 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                     >
                     {renamingCourse === course.name ? (
                       <form
-                        className="course-card course-card--rename"
-                        style={{ backgroundColor: courseTone(course) }}
+                        className={`course-card course-card--rename ${course.image ? 'has-image' : ''}`}
+                        style={courseLookStyle(course)}
                         onSubmit={commitRenameCourse}
                       >
                         <input
@@ -667,10 +721,10 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                       <button
                         className={`course-card ${course.name === activeCourse ? 'is-active' : ''} ${
                           draggingName === course.name ? 'is-dragging' : ''
-                        }`}
+                        } ${course.image ? 'has-image' : ''}`}
                         type="button"
                         draggable
-                        style={{ backgroundColor: courseTone(course) }}
+                        style={courseLookStyle(course)}
                         title="Double-click to rename"
                         onClick={() => chooseCourse(course.name)}
                         onDoubleClick={(event) => {
@@ -767,11 +821,13 @@ export function Tools({ accessToken }: { accessToken?: string }) {
               type="button"
               aria-haspopup="dialog"
               aria-expanded={orderOpen}
-              aria-label="Reorder courses"
-              onClick={() => setOrderOpen(true)}
-            >
-              <WrenchMark className="wrench-mark" />
-            </button>
+              aria-label="Customize courses"
+              onClick={() => {
+                setLookCourse(activeCourse || courses[0]?.name || '')
+                setLookHint('')
+                setOrderOpen(true)
+              }}
+            />
             <ol className="order-bar__ticks" aria-label="Course order">
               {courses.map((course, index) => (
                 <li key={course.name} className={course.name === activeCourse ? 'is-on' : ''}>
@@ -808,20 +864,25 @@ export function Tools({ accessToken }: { accessToken?: string }) {
               onClick={(event) => event.stopPropagation()}
             >
               <section className="order-pop__pane order-pop__pane--list">
-                <h2 id="order-pop-title">Rearrange courses</h2>
-                <p>Drag a row to a new slot. Double-click a name to rename it.</p>
-                {courses.length < 2 ? (
-                  <p className="order-pop__empty">Add another course first, then you can change the order.</p>
+                <h2 id="order-pop-title">Customize courses</h2>
+                <p>Drag to reorder. Click a course to dress it up. Double-click a name to rename it.</p>
+                {courses.length === 0 ? (
+                  <p className="order-pop__empty">Add a course first, then you can dress it up.</p>
                 ) : (
                   <ol className="order-pop__list">
                     {courses.map((course, index) => (
                       <li
                         key={course.name}
                         className={`order-pop__item ${orderDrag === course.name ? 'is-dragging' : ''} ${
-                          course.name === activeCourse ? 'is-on' : ''
+                          course.name === (lookCourse || activeCourse) ? 'is-on' : ''
                         }`}
-                        style={{ backgroundColor: courseTone(course) }}
+                        style={courseLookStyle(course)}
                         draggable={renamingCourse !== course.name}
+                        onClick={() => {
+                          setLookCourse(course.name)
+                          chooseCourse(course.name)
+                          setLookHint('')
+                        }}
                         onDoubleClick={(event) => {
                           event.preventDefault()
                           startRenameCourse(course.name)
@@ -855,6 +916,9 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                       >
                         <span className="order-pop__grip">
                           <GripMark />
+                        </span>
+                        <span className={`order-pop__thumb ${course.image ? 'has-image' : ''}`} aria-hidden="true">
+                          {course.image ? <img src={course.image} alt="" /> : null}
                         </span>
                         {renamingCourse === course.name ? (
                           <input
@@ -910,7 +974,75 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                   Done
                 </button>
               </section>
-              <section className="order-pop__pane order-pop__pane--blank" aria-label="Reserved panel" />
+              <section
+                className="order-pop__pane order-pop__pane--look"
+                aria-label="Course look"
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'copy'
+                }}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  void applyCourseImage(event.dataTransfer.files?.[0] ?? null)
+                }}
+              >
+                <input
+                  ref={courseImageInput}
+                  className="file-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => void applyCourseImage(event.target.files?.[0] ?? null)}
+                />
+                {looking ? (
+                  <>
+                    <div className="course-look__preview" style={courseLookStyle(looking)}>
+                      <strong>{looking.name}</strong>
+                      <small>{looking.image ? 'Cover on' : 'Color only'}</small>
+                    </div>
+                    <div className="course-look__copy">
+                      {looking.image ? (
+                        <>
+                          <h3>Change the cover</h3>
+                          <p>Swap the photo on {looking.name} or drop a new one here. The course color still shows through.</p>
+                        </>
+                      ) : (
+                        <>
+                          <h3>Give {looking.name} a cover</h3>
+                          <p>Add a photo so this course stands out on the shelf. Drop an image here or pick one from your files.</p>
+                        </>
+                      )}
+                    </div>
+                    <div className="course-look__actions">
+                      <button
+                        type="button"
+                        disabled={lookBusy}
+                        onClick={() => courseImageInput.current?.click()}
+                      >
+                        {lookBusy ? 'Adding…' : looking.image ? 'Change image' : 'Add image'}
+                      </button>
+                      {looking.image ? (
+                        <button
+                          type="button"
+                          className="is-ghost"
+                          disabled={lookBusy}
+                          onClick={() => {
+                            setCourseImage(looking.name, undefined)
+                            setLookHint(`Cover removed from ${looking.name}.`)
+                          }}
+                        >
+                          Remove cover
+                        </button>
+                      ) : null}
+                    </div>
+                    {lookHint ? <p className="course-look__hint">{lookHint}</p> : null}
+                  </>
+                ) : (
+                  <div className="course-look__copy">
+                    <h3>No course selected</h3>
+                    <p>Add a course first, then come back here to give it a cover image.</p>
+                  </div>
+                )}
+              </section>
             </div>
           </div>
         ) : null}

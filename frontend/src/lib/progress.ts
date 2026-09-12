@@ -7,16 +7,6 @@ const RECENT_WINDOW = 6
 const SERIES_LENGTH = 8
 const RISE_MARGIN = 0.12
 
-const SAMPLE_UNITS: Record<string, string[]> = {
-  biology: ['Cells', 'Genetics', 'Ecology', 'Human body'],
-  chemistry: ['Atoms', 'Bonding', 'Reactions', 'Stoichiometry'],
-  physics: ['Motion', 'Energy', 'Waves', 'Electricity'],
-  history: ['Causes', 'Events', 'People', 'Aftermath'],
-  english: ['Rhetoric', 'Theme', 'Structure', 'Voice'],
-  algebra: ['Equations', 'Functions', 'Graphs', 'Systems'],
-  math: ['Foundations', 'Practice', 'Word problems', 'Review'],
-}
-
 export type UnitJudgment = {
   name: string
   notes: number
@@ -90,12 +80,6 @@ export function recordUnitAttempt(entry: Omit<UnitAttempt, 'id' | 'at'> & { at?:
   localStorage.setItem(ATTEMPT_KEY, JSON.stringify(next))
 }
 
-export function unitsForCourse(course: Course): { names: string[]; sample: boolean } {
-  if (course.units.length > 0) return { names: course.units, sample: false }
-  const key = course.name.toLowerCase()
-  const match = Object.entries(SAMPLE_UNITS).find(([name]) => key.includes(name))
-  return { names: match?.[1] ?? ['Unit 1', 'Unit 2', 'Unit 3', 'Unit 4'], sample: true }
-}
 
 export function paletteFor(tone: string, count: number): CoursePalette {
   const [h, s] = hexToHsl(tone)
@@ -119,12 +103,10 @@ export function buildCoursePulse(
   attempts: UnitAttempt[],
   topics: TopicStat[],
 ): CoursePulse {
-  const { names } = unitsForCourse(course)
+  const names = course.units
   const palette = paletteFor(course.tone ?? '#2a6ea8', names.length)
   const courseAttempts = attempts.filter((item) => sameName(item.course, course.name))
-  const units = names.map((name, index) =>
-    judgeUnit(name, course.name, deposits, courseAttempts, topics, index),
-  )
+  const units = names.map((name) => judgeUnit(name, course.name, deposits, courseAttempts, topics))
   const anyLive = units.some((unit) => unit.live)
   const mastery = units.length
     ? Math.round(units.reduce((sum, unit) => sum + unit.mastery, 0) / units.length)
@@ -142,7 +124,7 @@ export function buildCoursePulse(
   const series = units.map((unit, index) => ({
     name: unit.name,
     color: palette.units[index] ?? palette.line,
-    values: seriesForUnit(unit, courseAttempts, index, !anyLive),
+    values: seriesForUnit(unit, courseAttempts),
   }))
   const overall = labels.map((_, session) =>
     Math.round(series.reduce((sum, line) => sum + line.values[session], 0) / Math.max(series.length, 1)),
@@ -169,7 +151,6 @@ function judgeUnit(
   deposits: NoteDeposit[],
   attempts: UnitAttempt[],
   topics: TopicStat[],
-  salt: number,
 ): UnitJudgment {
   const notes = deposits.filter((item) => sameName(item.course, courseName) && sameName(item.unit, name)).length
   const mine = attempts.filter((item) => sameName(item.unit, name))
@@ -180,9 +161,8 @@ function judgeUnit(
   const correctCount = loggedAttempts ? loggedCorrect : topic?.correct_answers || 0
   const live = attemptsCount > 0 || notes > 0
   const accuracy = attemptsCount ? Math.round((correctCount / attemptsCount) * 1000) / 10 : 0
-  const mastery = live ? masteryScore(correctCount, attemptsCount, notes) : sampleMastery(courseName, name, salt)
+  const mastery = live ? masteryScore(correctCount, attemptsCount, notes) : 0
   const { delta, verdict, reason } = decideVerdict(mine, attemptsCount, mastery, notes, live)
-  const previewDelta = ((hash(`${courseName}:${name}:d`) % 21) - 6)
 
   return {
     name,
@@ -191,9 +171,9 @@ function judgeUnit(
     correct: correctCount,
     accuracy,
     mastery,
-    delta: live ? delta : previewDelta,
-    verdict: live ? verdict : sampleVerdict(mastery, previewDelta),
-    reason: live ? reason : 'Draft sample until this unit has quizzes.',
+    delta,
+    verdict,
+    reason,
     live,
   }
 }
@@ -255,15 +235,12 @@ function courseVerdict(units: UnitJudgment[], mastery: number): UnitVerdict {
   return 'steady'
 }
 
-function seriesForUnit(unit: UnitJudgment, attempts: UnitAttempt[], salt: number, draft: boolean) {
+function seriesForUnit(unit: UnitJudgment, attempts: UnitAttempt[]) {
   const live = sessionMastery(attempts.filter((item) => sameName(item.unit, unit.name)), unit.notes)
-  if (live.length >= 2) {
-    return padSeries(live, unit.mastery)
+  if (live.length === 0) {
+    return Array.from({ length: SERIES_LENGTH }, () => (unit.live ? unit.mastery : 0))
   }
-  if (unit.live || draft) {
-    return previewSeries(Math.max(unit.mastery, 18), unit.name, salt)
-  }
-  return Array.from({ length: SERIES_LENGTH }, () => 0)
+  return padSeries(live, unit.mastery)
 }
 
 function sessionMastery(attempts: UnitAttempt[], notes: number) {
@@ -282,30 +259,10 @@ function sessionMastery(attempts: UnitAttempt[], notes: number) {
 
 function padSeries(values: number[], current: number) {
   const trimmed = values.slice(-SERIES_LENGTH)
-  const prefix = previewSeries(trimmed[0] ?? current, 'lead', 3).slice(0, SERIES_LENGTH - trimmed.length)
-  const next = [...prefix, ...trimmed]
+  const lead = trimmed[0] ?? current
+  const next = [...Array.from({ length: SERIES_LENGTH - trimmed.length }, () => lead), ...trimmed]
   next[next.length - 1] = current
-  return next.slice(-SERIES_LENGTH)
-}
-
-function previewSeries(end: number, seed: string, salt: number) {
-  const start = clamp(end - 32 - (hash(seed + String(salt)) % 14) - salt * 5, 10, 58)
-  return Array.from({ length: SERIES_LENGTH }, (_, index) => {
-    const t = index / (SERIES_LENGTH - 1)
-    const wobble = Math.sin((index + 1) * 1.2 + salt) * 7 + Math.cos(index * 0.7 + salt * 0.6) * 3
-    return clamp(Math.round(start + (end - start) * (0.12 + 0.88 * t * t) + wobble), 8, 100)
-  })
-}
-
-function sampleMastery(course: string, unit: string, salt: number) {
-  return 48 + (hash(`${course}:${unit}:${salt}`) % 38)
-}
-
-function sampleVerdict(mastery: number, delta: number): UnitVerdict {
-  if (mastery >= 82) return 'sharp'
-  if (delta >= 10 || mastery >= 70) return 'rising'
-  if (mastery < 45) return 'stuck'
-  return 'steady'
+  return next
 }
 
 function rate(items: UnitAttempt[]) {
@@ -315,12 +272,6 @@ function rate(items: UnitAttempt[]) {
 
 function sameName(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
-}
-
-function hash(value: string) {
-  let n = 0
-  for (let i = 0; i < value.length; i += 1) n = (n * 33 + value.charCodeAt(i)) >>> 0
-  return n
 }
 
 function hexToHsl(hex: string): [number, number, number] {

@@ -108,33 +108,40 @@ export function saveAvatar(dataUrl: string): void {
   localStorage.setItem(AVATAR_KEY, dataUrl)
 }
 
-export function fileToAvatarDataUrl(file: File): Promise<string> {
+export function fileToCourseImageDataUrl(file: File): Promise<string> {
+  return fileToCoverDataUrl(file, 480, 640)
+}
+
+function fileToCoverDataUrl(file: File, width: number, height: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error('Could not read image'))
     reader.onload = () => {
       const image = new Image()
       image.onload = () => {
-        const size = 256
         const canvas = document.createElement('canvas')
-        canvas.width = size
-        canvas.height = size
+        canvas.width = width
+        canvas.height = height
         const ctx = canvas.getContext('2d')
         if (!ctx) {
           resolve(String(reader.result))
           return
         }
-        const side = Math.min(image.width, image.height)
-        const sx = (image.width - side) / 2
-        const sy = (image.height - side) / 2
-        ctx.drawImage(image, sx, sy, side, side, 0, 0, size, size)
-        resolve(canvas.toDataURL('image/jpeg', 0.86))
+        const scale = Math.max(width / image.width, height / image.height)
+        const dw = image.width * scale
+        const dh = image.height * scale
+        ctx.drawImage(image, (width - dw) / 2, (height - dh) / 2, dw, dh)
+        resolve(canvas.toDataURL('image/jpeg', 0.84))
       }
       image.onerror = () => reject(new Error('Could not load image'))
       image.src = String(reader.result)
     }
     reader.readAsDataURL(file)
   })
+}
+
+export function fileToAvatarDataUrl(file: File): Promise<string> {
+  return fileToCoverDataUrl(file, 256, 256)
 }
 
 export function createDraftSession(topic: string, notes: string): Session {

@@ -46,6 +46,7 @@ export type Course = {
   name: string
   units: string[]
   tone?: string
+  image?: string
 }
 
 export type Notebook = {

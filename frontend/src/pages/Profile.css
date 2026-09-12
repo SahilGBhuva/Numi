@@ -15,7 +15,7 @@
 .profile-main {
   max-width: 320px;
   padding: 16px 16px 20px;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--page-accent, var(--ink));
   border-radius: 16px;
   background: var(--surface);
 }
@@ -28,7 +28,7 @@
   max-width: 320px;
   min-width: 0;
   padding: 22px 24px;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--page-accent, var(--ink));
   border-radius: 16px;
   background: var(--surface);
 }

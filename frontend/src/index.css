@@ -11,6 +11,15 @@
   --coral: #d36b4f;
   --sage: #6f9a7a;
   --plum: #6d4c8d;
+  --accent-home: #7eb8e8;
+  --accent-tools: #9b8cff;
+  --accent-progress: #6f9a7a;
+  --accent-games: #d36b4f;
+  --accent-goals: #e0a045;
+  --accent-profile: #b57ad4;
+  --accent-settings: #c8bf8a;
+  --accent-more: #a78bfa;
+  --page-accent: var(--ink);
   font-family: 'Outfit', system-ui, sans-serif;
   color: var(--ink);
   background:

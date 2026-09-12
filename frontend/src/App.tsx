@@ -45,7 +45,7 @@ function App() {
   return (
     <div className="app-shell">
       <SiteSidebar active={screen} />
-      <main className="sheet">
+      <main className={`sheet is-${screen}`}>
         <span className="blob blob-a" aria-hidden="true" />
         <span className="blob blob-b" aria-hidden="true" />
         <div className="binder-sparks" aria-hidden="true">

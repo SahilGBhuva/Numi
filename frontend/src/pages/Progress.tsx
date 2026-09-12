@@ -28,7 +28,7 @@ export function Progress({ session }: ProgressProps) {
   const [selected, setSelected] = useState(() => notebook.activeCourse || notebook.courses[0]?.name || '')
   const [focusUnit, setFocusUnit] = useState('')
   const [hover, setHover] = useState<number | null>(null)
-  const [howOpen, setHowOpen] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
   const studentId = session?.user.id ?? getStudentId()
 
   useEffect(() => {
@@ -103,8 +103,8 @@ export function Progress({ session }: ProgressProps) {
             stats={stats}
             focusUnit={focusUnit}
             hover={hover}
-            howOpen={howOpen}
-            onHow={() => setHowOpen((open) => !open)}
+            infoOpen={infoOpen}
+            onInfo={() => setInfoOpen((open) => !open)}
             onFocus={setFocusUnit}
             onHover={setHover}
           />
@@ -119,8 +119,8 @@ function CourseBoard({
   stats,
   focusUnit,
   hover,
-  howOpen,
-  onHow,
+  infoOpen,
+  onInfo,
   onFocus,
   onHover,
 }: {
@@ -128,19 +128,39 @@ function CourseBoard({
   stats: ProgressData | null
   focusUnit: string
   hover: number | null
-  howOpen: boolean
-  onHow: () => void
+  infoOpen: boolean
+  onInfo: () => void
   onFocus: (name: string) => void
   onHover: (index: number | null) => void
 }) {
   const { palette, course } = pulse
-  const sampleUnits = course.units.length === 0
+  const hasUnits = course.units.length > 0
   const activeLine = pulse.series.find((line) => line.name === focusUnit)
   const hoverIndex = hover ?? pulse.labels.length - 1
   const hoverValue = (activeLine?.values ?? pulse.overall)[hoverIndex] ?? pulse.mastery
 
+  useEffect(() => {
+    if (!infoOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onInfo()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [infoOpen, onInfo])
+
   return (
     <article className="progress-board" style={{ ['--tone' as string]: palette.tone, ['--tone-soft' as string]: palette.soft }}>
+      <button
+        type="button"
+        className={`progress-info ${infoOpen ? 'is-open' : ''}`}
+        aria-expanded={infoOpen}
+        aria-controls="progress-info-panel"
+        aria-label={infoOpen ? 'Close progress info' : 'How progress works'}
+        onClick={onInfo}
+      >
+        <InfoMark />
+      </button>
+      {infoOpen ? <ProgressInfo onClose={onInfo} /> : null}
       <header className="progress-hero">
         <div>
           <p className="progress-hero__kicker">{course.name}</p>
@@ -150,7 +170,7 @@ function CourseBoard({
         <div className="progress-hero__meta">
           <span className={`verdict verdict--${pulse.verdict}`}>{VERDICT_COPY[pulse.verdict].label}</span>
           <span className={`progress-live ${pulse.live ? 'is-live' : ''}`}>
-            {pulse.live ? 'Live quizzes' : 'Draft sample'}
+            {pulse.live ? 'Live quizzes' : hasUnits ? 'No quizzes yet' : 'No units yet'}
           </span>
         </div>
       </header>
@@ -179,62 +199,67 @@ function CourseBoard({
           <div>
             <strong>{course.name} mastery by session</strong>
             <span>
-              {activeLine ? activeLine.name : 'Course average'} · session {hoverIndex + 1} · {hoverValue}%
+              {hasUnits
+                ? `${activeLine ? activeLine.name : 'Course average'} · session ${hoverIndex + 1} · ${hoverValue}%`
+                : 'Add units in Tools to start this graph'}
             </span>
           </div>
-          <button type="button" className="progress-how" aria-expanded={howOpen} onClick={onHow}>
-            How we judge
-          </button>
         </figcaption>
-        <PulseGraph pulse={pulse} focusUnit={focusUnit} hover={hover} onHover={onHover} />
-        <ul className="progress-legend">
-          <li>
-            <button type="button" className={!focusUnit ? 'is-on' : ''} onClick={() => onFocus('')}>
-              <i style={{ background: palette.line }} />
-              Average
-            </button>
-          </li>
-          {pulse.series.map((line) => (
-            <li key={line.name}>
-              <button
-                type="button"
-                className={focusUnit === line.name ? 'is-on' : ''}
-                onClick={() => onFocus(focusUnit === line.name ? '' : line.name)}
-              >
-                <i style={{ background: line.color }} />
-                {line.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-        {sampleUnits ? <p className="progress-note">Sample units until you add real ones in Tools.</p> : null}
-        {!pulse.live ? <p className="progress-note">Quiz this course to replace the sample curve with your own.</p> : null}
+        {hasUnits ? (
+          <>
+            <PulseGraph pulse={pulse} focusUnit={focusUnit} hover={hover} onHover={onHover} />
+            <ul className="progress-legend">
+              <li>
+                <button type="button" className={!focusUnit ? 'is-on' : ''} onClick={() => onFocus('')}>
+                  <i style={{ background: palette.line }} />
+                  Average
+                </button>
+              </li>
+              {pulse.series.map((line) => (
+                <li key={line.name}>
+                  <button
+                    type="button"
+                    className={focusUnit === line.name ? 'is-on' : ''}
+                    onClick={() => onFocus(focusUnit === line.name ? '' : line.name)}
+                  >
+                    <i style={{ background: line.color }} />
+                    {line.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="progress-note">This course has no units yet, so there is nothing to plot.</p>
+        )}
+        {hasUnits && !pulse.live ? (
+          <p className="progress-note">Quiz these units in Tools to fill the graph.</p>
+        ) : null}
       </figure>
-
-      {howOpen ? (
-        <aside className="progress-rules" aria-label="Judgment rules">
-          <p>Mastery shrinks toward 38% until you have enough answers, then follows accuracy, plus a small notes bonus.</p>
-          <p>Improvement compares your last 6 answers to the 6 before that. A 12-point swing is Rising or Slipping. 82%+ and stable is Sharp.</p>
-        </aside>
-      ) : null}
 
       <section className="progress-roadmap" aria-label={`${course.name} roadmap`}>
         <div className="progress-roadmap__head">
           <h3>Unit roadmap</h3>
           <p>Follow the course tone down the trail. The next unit to press is marked.</p>
         </div>
-        <ol className="progress-trail">
-          {pulse.units.map((unit, index) => (
-            <RoadNode
-              key={unit.name}
-              unit={unit}
-              color={pulse.series[index]?.color ?? palette.line}
-              next={unit.name === pulse.recommended}
-              selected={unit.name === focusUnit}
-              onSelect={() => onFocus(focusUnit === unit.name ? '' : unit.name)}
-            />
-          ))}
-        </ol>
+        {hasUnits ? (
+          <ol className="progress-trail">
+            {pulse.units.map((unit, index) => (
+              <RoadNode
+                key={unit.name}
+                unit={unit}
+                color={pulse.series[index]?.color ?? palette.line}
+                next={unit.name === pulse.recommended}
+                selected={unit.name === focusUnit}
+                onSelect={() => onFocus(focusUnit === unit.name ? '' : unit.name)}
+              />
+            ))}
+          </ol>
+        ) : (
+          <p className="progress-note">
+            Create units for {course.name} in <a href="#tools">Tools</a>, then they will show up here.
+          </p>
+        )}
       </section>
     </article>
   )
@@ -378,12 +403,68 @@ function RoadNode({
         <strong>{unit.name}</strong>
         <span className={`verdict verdict--${unit.verdict}`}>{VERDICT_COPY[unit.verdict].label}</span>
         <small>
-          {unit.live
-            ? `${unit.correct}/${unit.attempts || 0} · ${unit.delta >= 0 ? '+' : ''}${unit.delta} pts`
-            : 'Sample trend'}
+          {unit.attempts > 0
+            ? `${unit.correct}/${unit.attempts} · ${unit.delta >= 0 ? '+' : ''}${unit.delta} pts`
+            : unit.notes > 0
+              ? `${unit.notes} note${unit.notes === 1 ? '' : 's'} deposited`
+              : 'No quizzes yet'}
         </small>
       </button>
     </li>
+  )
+}
+
+function InfoMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 10.4v6.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="7.6" r="1.1" fill="currentColor" />
+    </svg>
+  )
+}
+
+function ProgressInfo({ onClose }: { onClose: () => void }) {
+  return (
+    <aside id="progress-info-panel" className="progress-info-panel" role="dialog" aria-labelledby="progress-info-title">
+      <header>
+        <h3 id="progress-info-title">How progress works</h3>
+        <button type="button" onClick={onClose} aria-label="Close progress info">
+          Close
+        </button>
+      </header>
+      <section>
+        <h4>What mastery is</h4>
+        <p>
+          Mastery is a 0–100 score for how well you know a unit. The big number at the top is the average of every unit in this course.
+        </p>
+        <p>
+          Early on, the score stays pulled toward 38% so one lucky quiz does not make a unit look finished. After about six answers it follows your real accuracy.
+        </p>
+      </section>
+      <section>
+        <h4>How we grade</h4>
+        <p>Each unit gets a verdict from its own quiz history:</p>
+        <ul>
+          <li><strong>Locked</strong> — no notes or quizzes yet</li>
+          <li><strong>Seeded</strong> — notes are in, but you have not quizzed</li>
+          <li><strong>Warming</strong> — fewer than four answers, so the trend is not reliable</li>
+          <li><strong>Rising / Slipping</strong> — your last 6 answers are 12+ points better or worse than the 6 before</li>
+          <li><strong>Sharp</strong> — 82%+ mastery and holding there</li>
+          <li><strong>Stuck</strong> — enough tries, still under 45%</li>
+          <li><strong>Steady</strong> — about the same session to session</li>
+        </ul>
+      </section>
+      <section>
+        <h4>What brings mastery up</h4>
+        <ul>
+          <li>Correct quiz answers in that unit — this is the main lift</li>
+          <li>More attempts, so the score trusts your accuracy instead of the 38% start</li>
+          <li>Depositing notes — a small bonus, up to +8</li>
+        </ul>
+        <p>Wrong answers pull the score down. XP and streak on this board are account-wide, not the same as unit mastery.</p>
+      </section>
+    </aside>
   )
 }
 
