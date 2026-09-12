@@ -234,10 +234,8 @@
   border: 0;
   border-radius: 0;
   background-color: transparent;
-  background-image: url('/bindet-wrench.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
+  font-size: 34px;
+  line-height: 1;
   box-shadow: none;
   cursor: pointer;
   transform-origin: 50% 50%;

@@ -67,7 +67,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <main className="auth-screen auth-loading-screen">
         <div className="auth-loading-orb" aria-hidden="true" />
-        <p>Opening bindit…</p>
+        <p>Opening bindet…</p>
       </main>
     )
   }
@@ -101,14 +101,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
       <main className="auth-screen">
         <section className="auth-shell">
           <aside className="auth-story">
-            <div className="auth-brand-row"><BrandMark /><span>bindit</span></div>
+            <div className="auth-brand-row"><BrandMark /><span>bindet</span></div>
             <div className="auth-story-copy">
               <span className="auth-eyebrow">Study smarter, consistently.</span>
               <h1>Turn scattered studying into connected understanding.</h1>
               <p>Build momentum, connect ideas, and keep everything you learn in one place.</p>
             </div>
             <div className="auth-preview-card auth-preview-card--brand">
-              <img className="auth-preview-mascot" src="/bindit-mascot.webp" alt="bindit otter mascot" />
+              <img className="auth-preview-mascot" src="/bindit-mascot.webp" alt="bindet otter mascot" />
               <div className="auth-preview-content">
                 <div className="auth-preview-top"><span className="auth-preview-dot" /><span>Today’s progress</span></div>
                 <strong>3 concepts connected</strong>
@@ -119,11 +119,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
           </aside>
 
           <section className="auth-panel">
-            <div className="auth-mobile-brand"><BrandMark /><span>bindit</span></div>
+            <div className="auth-mobile-brand"><BrandMark /><span>bindet</span></div>
             <div className="auth-panel-inner">
               <div className="auth-heading">
                 <span className="auth-kicker">{mode === 'login' ? 'Welcome back' : 'Start your learning system'}</span>
-                <h2>{mode === 'login' ? 'Log in to bindit' : 'Create your account'}</h2>
+                <h2>{mode === 'login' ? 'Log in to bindet' : 'Create your account'}</h2>
                 <p>{mode === 'login' ? 'Pick up right where you left off.' : 'A few seconds now, a much better study flow later.'}</p>
               </div>
 
@@ -155,7 +155,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
                 {error ? <div className="auth-feedback auth-error" role="alert">{error}</div> : null}
                 {message ? <div className="auth-feedback auth-message" role="status">{message}</div> : null}
                 <button className="auth-primary" type="submit" disabled={busy}>{busy ? <><span className="auth-spinner" aria-hidden="true" />Working…</> : mode === 'login' ? 'Log in' : 'Create account'}</button>
-                <p className="auth-terms">{mode === 'signup' ? 'By creating an account, you agree to use bindit responsibly.' : 'Your progress stays connected to your account.'}</p>
+                <p className="auth-terms">{mode === 'signup' ? 'By creating an account, you agree to use bindet responsibly.' : 'Your progress stays connected to your account.'}</p>
               </form>
 
               <div className="auth-guest-separator"><span>or</span></div>
@@ -163,7 +163,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               <p className="auth-guest-copy">Guest progress stays on this browser and can be claimed when you create a profile.</p>
 
               <p className="auth-switch-copy">
-                {mode === 'login' ? 'New to bindit?' : 'Already have an account?'}{' '}
+                {mode === 'login' ? 'New to bindet?' : 'Already have an account?'}{' '}
                 <button type="button" disabled={busy} onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Create an account' : 'Log in'}</button>
               </p>
             </div>

@@ -3,9 +3,10 @@ from __future__ import annotations
 import random
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,10 +14,12 @@ import ai_tutor
 import auth
 import database
 import questions
+import note_ingestion
+import note_store
 
 app = FastAPI(
-    title="bindit API",
-    version="0.8.0",
+    title="bindet API",
+    version="0.9.0",
     description="Practice, accounts, profiles, secure progress tracking, personalized quizzes, AI flashcards, and AI tutoring.",
 )
 
@@ -104,6 +107,18 @@ class FlashcardResponse(BaseModel):
     unit: str
     personalized: bool
     cards: list[Flashcard]
+
+
+class NoteResponse(BaseModel):
+    id: str
+    course: str
+    unit: str
+    file_name: str
+    content_type: str
+    size_bytes: int
+    status: Literal["ready"] = "ready"
+    text_preview: str
+    created_at: datetime
 
 
 class TopicStat(BaseModel):
@@ -357,7 +372,7 @@ def social_error(error: ValueError) -> HTTPException:
 
 @app.get("/")
 def home():
-    return {"message": "bindit backend is running", "version": app.version, "docs": "/docs"}
+    return {"message": "bindet backend is running", "version": app.version, "docs": "/docs"}
 
 
 @app.get("/api/health")
@@ -370,6 +385,66 @@ def health():
 def auth_config():
     url, key = auth.public_settings()
     return {"supabase_url": url, "supabase_anon_key": key}
+
+
+def note_response(row: dict) -> NoteResponse:
+    return NoteResponse(
+        id=row["id"], course=row["course"], unit=row["unit"], file_name=row["file_name"],
+        content_type=row["content_type"], size_bytes=row["size_bytes"], status="ready",
+        text_preview=row["text"][:500], created_at=row["created_at"],
+    )
+
+
+@app.post("/api/notes", response_model=NoteResponse, status_code=201)
+async def upload_note(
+    course: Annotated[str, Form(min_length=1, max_length=120)],
+    unit: Annotated[str, Form(min_length=1, max_length=160)],
+    file: Annotated[UploadFile, File()],
+    authorization: Annotated[str | None, Header()] = None,
+):
+    user = auth.authenticated_user(authorization)
+    filename = file.filename or "notes"
+    content = await file.read(note_ingestion.MAX_NOTE_BYTES + 1)
+    try:
+        suffix = Path(filename).suffix.lower()
+        if suffix in note_ingestion.IMAGE_EXTENSIONS:
+            if len(content) > note_ingestion.MAX_NOTE_BYTES:
+                raise note_ingestion.NoteIngestionError("Notes must be 10 MB or smaller")
+            if not content:
+                raise note_ingestion.NoteIngestionError("The uploaded file is empty")
+            fallback_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+            text = note_ingestion.clean_text(ai_tutor.extract_image_notes(
+                image_bytes=content, content_type=file.content_type or fallback_types[suffix]
+            ))
+        else:
+            try:
+                text = note_ingestion.extract_text(filename, content)
+            except note_ingestion.NoteIngestionError as exc:
+                if suffix == ".pdf" and str(exc) == "No readable text was found in that file":
+                    text = note_ingestion.clean_text(ai_tutor.extract_pdf_notes(pdf_bytes=content))
+                else:
+                    raise
+    except (note_ingestion.NoteIngestionError, ai_tutor.AITutorError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not text:
+        raise HTTPException(status_code=400, detail="No readable text was found in that file")
+    row = note_store.save_note(user["id"], course.strip(), unit.strip(), Path(filename).name[:255], file.content_type or "", text, len(content))
+    return note_response(row)
+
+
+@app.get("/api/notes", response_model=list[NoteResponse])
+def get_notes(course: str, unit: str, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    return [note_response(row) for row in note_store.list_notes(user["id"], course.strip(), unit.strip())]
+
+
+@app.get("/api/notes/{note_id}", response_model=NoteResponse)
+def get_note(note_id: str, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    row = note_store.get_note(user["id"], note_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note_response(row)
 
 
 @app.get("/api/auth/me", response_model=AccountResponse)
@@ -425,14 +500,16 @@ def generate_question(data: QuestionRequest, authorization: Annotated[str | None
     if has_school_context and data.notes:
         target_topic = data.notes.unit.strip() or data.notes.course.strip()
         difficulty, personalization = quiz_personalization(student_id, data.difficulty, target_topic)
+        source_labels, source_text = note_store.context_for(student_id, data.notes.course.strip(), data.notes.unit.strip())
         try:
             ai_question = ai_tutor.generate_question(
                 course=data.notes.course.strip(),
                 unit=data.notes.unit.strip(),
-                source_labels=[name.strip() for name in data.notes.files if name.strip()],
+                source_labels=source_labels,
                 focus=data.topic,
                 difficulty=difficulty,
                 personalization=personalization,
+                source_text=source_text,
             )
         except ai_tutor.AITutorError as exc:
             raise HTTPException(status_code=503, detail="AI quiz generation is temporarily unavailable. Try again in a moment.") from exc
@@ -470,13 +547,15 @@ def generate_flashcards(data: FlashcardRequest, authorization: Annotated[str | N
 
     target_topic = unit or course
     _, personalization = quiz_personalization(student_id, 2, target_topic)
+    source_labels, source_text = note_store.context_for(student_id, course, unit)
     try:
         cards = ai_tutor.generate_flashcards(
             course=course,
             unit=unit,
-            source_labels=[name.strip() for name in data.files if name.strip()],
+            source_labels=source_labels,
             count=data.count,
             personalization=personalization,
+            source_text=source_text,
         )
     except ai_tutor.AITutorError as exc:
         raise HTTPException(status_code=503, detail="AI flashcard generation is temporarily unavailable. Try again in a moment.") from exc

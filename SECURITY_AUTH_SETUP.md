@@ -1,6 +1,6 @@
-# Bindit authentication setup
+# bindet authentication setup
 
-Bindit uses Supabase Auth for account identity.
+bindet uses Supabase Auth for account identity.
 
 Set these backend environment variables locally and in deployment:
 

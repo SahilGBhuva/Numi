@@ -1,6 +1,6 @@
-# Bindit Backend
+# bindet Backend
 
-This service connects the Bindit student experience, learning logic, authentication, and progress tracking through one API.
+This service connects the bindet student experience, learning logic, authentication, and progress tracking through one API.
 
 ## Start locally
 

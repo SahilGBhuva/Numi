@@ -60,7 +60,7 @@ export function Home() {
       </div>
 
       <header className="home__header">
-        <p className="home__kicker">bindit</p>
+        <p className="home__kicker">bindet</p>
         <h1 className="home__title">Words from the wise</h1>
       </header>
 
