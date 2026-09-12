@@ -19,7 +19,7 @@ import note_store
 
 app = FastAPI(
     title="bindet API",
-    version="1.1.0",
+    version="1.2.0",
     description="Practice, accounts, profiles, secure progress tracking, personalized quizzes, AI flashcards, and AI tutoring.",
 )
 
@@ -157,6 +157,8 @@ class ProfileResponse(BaseModel):
     avatar_path: str = ""
     friend_code: str
     daily_goal: int = 20
+    discoverable: bool = True
+    allow_friend_requests: bool = True
     total_xp: int = 0
     streak: int = 0
     best_streak: int = 0
@@ -192,6 +194,17 @@ class FriendRequestDecision(BaseModel):
 class FriendQuestCreate(BaseModel):
     friend_id: str = Field(min_length=1, max_length=100)
     target_xp: int = Field(default=100, ge=50, le=1000)
+
+
+class SocialPrivacyUpdate(BaseModel):
+    discoverable: bool
+    allow_friend_requests: bool
+
+
+class SocialReportCreate(BaseModel):
+    user_id: str = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=2, max_length=40)
+    details: str = Field(default="", max_length=1000)
 
 
 def normalize_text(value: str) -> str:
@@ -381,10 +394,15 @@ def social_error(error: ValueError) -> HTTPException:
         "friend_not_found": (404, "No learner was found with that friend code"),
         "cannot_friend_self": (400, "You cannot add yourself"),
         "friendship_exists": (409, "You are already friends or a request is pending"),
+        "friend_requests_disabled": (403, "This learner is not accepting friend requests"),
         "profile_not_found": (400, "Finish setting up your profile first"),
         "request_not_found": (404, "Friend request not found"),
         "request_already_answered": (409, "That friend request was already answered"),
         "invalid_quest_target": (400, "Friend quests must be between 50 and 1000 XP"),
+        "activity_not_found": (404, "That activity is not available"),
+        "cannot_block_self": (400, "You cannot block yourself"),
+        "cannot_report_self": (400, "You cannot report yourself"),
+        "social_rate_limited": (429, "You’re doing that too quickly. Please wait and try again."),
     }
     status, message = messages.get(str(error), (400, "Could not update that profile"))
     return HTTPException(status_code=status, detail=message)
@@ -507,13 +525,79 @@ def get_friends(authorization: Annotated[str | None, Header()] = None):
         "requests": database.pending_friend_requests(user["id"]),
         "leaderboard": database.friend_leaderboard(user["id"]),
         "quests": database.active_friend_quests(user["id"]),
+        "suggestions": database.suggested_people(user["id"]),
+        "activity": database.activity_feed(user["id"]),
+        "notifications": database.notifications_for(user["id"]),
     }
+
+
+@app.get("/api/friends/search")
+def search_friends(q: str = "", authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "search", 60)
+        return database.search_people(user["id"], q)
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.post("/api/social/activity/{event_id}/reaction")
+def react_to_social_activity(event_id: int, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "reaction", 80)
+        return database.react_to_activity(user["id"], event_id)
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.post("/api/social/notifications/read")
+def read_social_notifications(authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "notification_read", 60)
+    except ValueError as error:
+        raise social_error(error) from error
+    database.mark_notifications_read(user["id"])
+    return {"updated": True}
+
+
+@app.put("/api/social/privacy")
+def save_social_privacy(data: SocialPrivacyUpdate, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "privacy", 20)
+        return database.update_social_privacy(user["id"], data.discoverable, data.allow_friend_requests)
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.post("/api/social/blocks/{user_id}")
+def block_social_user(user_id: str, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "block", 20)
+        database.block_person(user["id"], user_id)
+    except ValueError as error:
+        raise social_error(error) from error
+    return {"blocked": True}
+
+
+@app.post("/api/social/reports", status_code=201)
+def report_social_user(data: SocialReportCreate, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "report", 10)
+        return database.report_person(user["id"], data.user_id, data.reason, data.details)
+    except ValueError as error:
+        raise social_error(error) from error
 
 
 @app.post("/api/friends/requests", status_code=201)
 def create_friend_request(data: FriendRequestCreate, authorization: Annotated[str | None, Header()] = None):
     user = auth.authenticated_user(authorization)
     try:
+        database.check_social_rate_limit(user["id"], "friend_request", 20)
         return database.send_friend_request(user["id"], data.friend_code.strip())
     except ValueError as error:
         raise social_error(error) from error
@@ -523,6 +607,7 @@ def create_friend_request(data: FriendRequestCreate, authorization: Annotated[st
 def decide_friend_request(request_id: int, data: FriendRequestDecision, authorization: Annotated[str | None, Header()] = None):
     user = auth.authenticated_user(authorization)
     try:
+        database.check_social_rate_limit(user["id"], "friend_decision", 40)
         return database.respond_to_friend_request(request_id, user["id"], data.accept)
     except ValueError as error:
         raise social_error(error) from error
@@ -531,6 +616,10 @@ def decide_friend_request(request_id: int, data: FriendRequestDecision, authoriz
 @app.delete("/api/friends/{friend_id}")
 def delete_friend(friend_id: str, authorization: Annotated[str | None, Header()] = None):
     user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "unfriend", 20)
+    except ValueError as error:
+        raise social_error(error) from error
     if not database.remove_friend(user["id"], friend_id):
         raise HTTPException(status_code=404, detail="Friend not found")
     return {"deleted": True}
@@ -540,6 +629,7 @@ def delete_friend(friend_id: str, authorization: Annotated[str | None, Header()]
 def start_friend_quest(data: FriendQuestCreate, authorization: Annotated[str | None, Header()] = None):
     user = auth.authenticated_user(authorization)
     try:
+        database.check_social_rate_limit(user["id"], "quest", 20)
         return database.create_friend_quest(user["id"], data.friend_id, data.target_xp)
     except ValueError as error:
         raise social_error(error) from error
@@ -568,8 +658,15 @@ def update_account_profile(data: AccountProfileUpdate, authorization: Annotated[
 
 @app.post("/api/generate-question", response_model=QuestionResponse)
 def generate_question(data: QuestionRequest, authorization: Annotated[str | None, Header()] = None):
-    student_id = verified_student_id(data.student_id, authorization)
     has_school_context = bool(data.notes and (data.notes.course.strip() or data.notes.unit.strip()))
+    if has_school_context:
+        student_id = auth.authenticated_user(authorization)["id"]
+        try:
+            database.check_social_rate_limit(student_id, "ai_question", 40, 1440)
+        except ValueError as error:
+            raise social_error(error) from error
+    else:
+        student_id = verified_student_id(data.student_id, authorization)
 
     if has_school_context and data.notes:
         target_topic = data.notes.unit.strip() or data.notes.course.strip()
@@ -613,7 +710,11 @@ def generate_question(data: QuestionRequest, authorization: Annotated[str | None
 
 @app.post("/api/generate-flashcards", response_model=FlashcardResponse)
 def generate_flashcards(data: FlashcardRequest, authorization: Annotated[str | None, Header()] = None):
-    student_id = verified_student_id(data.student_id, authorization)
+    student_id = auth.authenticated_user(authorization)["id"]
+    try:
+        database.check_social_rate_limit(student_id, "ai_flashcards", 20, 1440)
+    except ValueError as error:
+        raise social_error(error) from error
     course = data.course.strip()
     unit = data.unit.strip()
     if not course and not unit:
@@ -662,7 +763,14 @@ def analyze_answer(data: AnswerRequest, authorization: Annotated[str | None, Hea
         hint = None
         grading_source: Literal["deterministic", "ai", "fallback"] = "deterministic"
     else:
+        if authorization:
+            try:
+                database.check_social_rate_limit(student_id, "ai_grading", 120, 1440)
+            except ValueError as error:
+                raise social_error(error) from error
         try:
+            if not authorization:
+                raise ai_tutor.AITutorError("Sign in for AI grading")
             ai_result = ai_tutor.grade_answer(
                 question=question["question"],
                 correct_answer=question["correct_answer"],

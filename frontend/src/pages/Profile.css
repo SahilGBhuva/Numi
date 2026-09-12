@@ -6,14 +6,14 @@
 
 .profile-layout {
   display: grid;
-  grid-template-columns: minmax(0, 320px) minmax(0, 320px);
+  grid-template-columns: minmax(300px, 360px) minmax(360px, 520px);
   gap: 24px;
   align-items: start;
   margin-top: 48px;
 }
 
 .profile-main {
-  max-width: 320px;
+  max-width: 360px;
   padding: 16px 16px 20px;
   border: 2px solid var(--page-accent, var(--ink));
   border-radius: 16px;
@@ -25,7 +25,7 @@
   flex-direction: column;
   gap: 28px;
   width: 100%;
-  max-width: 320px;
+  max-width: 520px;
   min-width: 0;
   padding: 22px 24px;
   border: 2px solid var(--page-accent, var(--ink));
@@ -154,19 +154,34 @@
 .profile-friends h2 span { color: var(--muted); font-size: 13px; }
 
 .friend-add { display: flex; gap: 8px; margin-bottom: 12px; }
-.friend-add input { min-width: 0; flex: 1; padding: 9px 10px; border: 2px solid var(--ink); border-radius: 10px; background: rgba(255,255,255,.05); color: var(--ink); font: inherit; text-transform: uppercase; }
+.friend-add input { min-width: 0; flex: 1; padding: 9px 10px; border: 1px solid rgba(232,223,176,.32); border-radius: 9px; background: rgba(255,255,255,.035); color: var(--ink); font: inherit; }
+.friend-add--code input { text-transform: uppercase; }
 .friend-add button, .friend-request button, .quest-start { border: 2px solid #58a700; border-radius: 10px; background: #58cc02; color: #173300; padding: 8px 12px; font-weight: 900; cursor: pointer; box-shadow: 0 3px 0 #3d8500; }
 .friend-add button:disabled, .friend-request button:disabled, .quest-start:disabled { opacity: .55; cursor: wait; }
 .friend-request { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 7px; margin-bottom: 10px; padding: 10px; border: 1px solid rgba(232,223,176,.25); border-radius: 12px; }
 .friend-request span { display: grid; }
 .friend-request small, .friend-name small { color: var(--muted); font-size: 11px; }
 .friend-request .is-quiet { border-color: var(--muted); background: transparent; color: var(--ink); box-shadow: none; }
-.friend-mini { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 7px; margin-top: 8px; }
+.friend-mini { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 7px; margin-top: 8px; padding: 8px 0; border-bottom: 1px solid rgba(232,223,176,.12); }
 .friend-mini span { display: grid; min-width: 0; }
 .friend-mini small { color: var(--muted); font-size: 10px; }
 .friend-mini button { border: 1px solid #1cb0f6; border-radius: 8px; background: rgba(28,176,246,.14); color: #72d3ff; padding: 6px 8px; font-weight: 800; cursor: pointer; }
 .friend-mini .is-remove { border-color: rgba(255,95,95,.45); background: transparent; color: #ff8b8b; }
 .profile-social-message { margin: 10px 0 0; color: #89d64f; font-size: 12px; font-weight: 800; }
+.friend-id-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 11px 12px; border: 1px solid rgba(232,223,176,.28); border-radius: 10px; background: rgba(255,255,255,.035); }
+.friend-id-card span { display: grid; gap: 2px; }
+.friend-id-card small { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.friend-id-card strong { letter-spacing: .1em; }
+.friend-id-card button, .person-result button, .activity-item button, .panel-heading button { border: 1px solid #1cb0f6; border-radius: 8px; background: transparent; color: #72d3ff; padding: 7px 9px; font-weight: 800; cursor: pointer; }
+.person-result { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 9px; margin: 8px 0; }
+.person-result > span:nth-child(2) { display: grid; min-width: 0; }
+.person-result small { color: var(--muted); font-size: 11px; }
+.friend-menu { position: relative; }
+.friend-menu summary { list-style: none; cursor: pointer; padding: 5px; color: var(--muted); }
+.friend-menu summary::-webkit-details-marker { display: none; }
+.friend-menu div { position: absolute; z-index: 4; right: 0; top: 28px; display: grid; min-width: 100px; padding: 5px; border: 1px solid rgba(232,223,176,.25); border-radius: 9px; background: #17202b; box-shadow: 0 10px 28px rgba(0,0,0,.3); }
+.friend-menu button { border: 0; background: transparent; color: var(--ink); padding: 7px 9px; text-align: left; cursor: pointer; }
+.friend-menu button.is-danger { color: #ff9494; }
 
 .profile-panel-section h2 {
   margin: 0 0 16px;
@@ -204,6 +219,20 @@
 .friend-quest > div:first-child { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
 .friend-quest > div:first-child span { color: var(--muted); font-weight: 800; }
 .quest-start { width: 100%; }
+.panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.panel-heading > span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.activity-item { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(232,223,176,.12); }
+.activity-item p { display: grid; margin: 0; font-size: 13px; }
+.activity-item small { color: var(--muted); font-size: 10px; margin-top: 2px; }
+.activity-item button { font-size: 11px; white-space: nowrap; }
+.activity-item button.is-reacted { background: rgba(28,176,246,.15); }
+.social-notifications > p:not(.profile-panel__empty) { margin: 0; padding: 9px 10px; border-bottom: 1px solid rgba(232,223,176,.1); font-size: 12px; }
+.social-notifications > p.is-unread { border-left: 2px solid #1cb0f6; background: rgba(28,176,246,.07); }
+.social-privacy { display: grid; gap: 12px; }
+.social-privacy > label { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; }
+.social-privacy > label span { display: grid; }
+.social-privacy small { color: var(--muted); font-size: 11px; font-weight: 500; }
+.social-privacy input { width: 20px; height: 20px; accent-color: #58cc02; }
 
 .profile-friends__avatar.is-empty {
   background: rgba(255, 255, 255, 0.06);
@@ -322,4 +351,9 @@
   .profile-layout {
     margin-top: 24px;
   }
+  .profile-page { padding: 16px 14px 28px; }
+  .profile-panels { padding: 18px; gap: 22px; }
+  .profile-panel-section h2 { font-size: 21px; }
+  .activity-item { grid-template-columns: 32px 1fr; }
+  .activity-item button { grid-column: 2; justify-self: start; }
 }

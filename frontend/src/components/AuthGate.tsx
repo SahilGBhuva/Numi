@@ -160,7 +160,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
               <div className="auth-guest-separator"><span>or</span></div>
               <button className="auth-guest-button" type="button" disabled={busy} onClick={continueAsGuest}>Continue as guest</button>
-              <p className="auth-guest-copy">Guest progress stays on this browser and can be claimed when you create a profile.</p>
+              <p className="auth-guest-copy">Guest mode is temporary. Sign in to save progress, use AI notes, and connect with friends.</p>
 
               <p className="auth-switch-copy">
                 {mode === 'login' ? 'New to bindet?' : 'Already have an account?'}{' '}

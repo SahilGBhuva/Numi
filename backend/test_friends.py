@@ -53,6 +53,45 @@ class FriendsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "friend_not_found"):
             database.create_friend_quest("alex-id", "sam-id", 100)
 
+    def test_weekly_league_and_friend_streak_use_real_xp_events(self):
+        self.become_friends()
+        database.update_progress("alex-id", "Biology", True, 30)
+        database.update_progress("sam-id", "Biology", True, 20)
+        league = database.friend_leaderboard("sam-id")
+        self.assertEqual([row["weekly_xp"] for row in league], [30, 20])
+        self.assertEqual(database.list_friends("sam-id")[0]["friend_streak"], 1)
+
+    def test_search_respects_privacy_and_blocking(self):
+        result = database.search_people("alex-id", "sam")
+        self.assertEqual(result[0]["student_id"], "sam-id")
+        database.update_social_privacy("sam-id", False, False)
+        self.assertEqual(database.search_people("alex-id", "sam"), [])
+        with self.assertRaisesRegex(ValueError, "friend_requests_disabled"):
+            database.send_friend_request("alex-id", self.sam["friend_code"])
+
+    def test_block_removes_friendship_and_prevents_readding(self):
+        self.become_friends()
+        database.block_person("alex-id", "sam-id")
+        self.assertEqual(database.list_friends("alex-id"), [])
+        with self.assertRaisesRegex(ValueError, "friend_not_found"):
+            database.send_friend_request("sam-id", self.alex["friend_code"])
+
+    def test_activity_reactions_are_limited_to_friends(self):
+        self.become_friends()
+        database.update_progress("sam-id", "History", True, 15)
+        event = database.activity_feed("alex-id")[0]
+        self.assertTrue(database.react_to_activity("alex-id", event["id"])["reacted"])
+        self.assertEqual(database.notifications_for("sam-id")[0]["kind"], "high_five")
+        database.onboard_account("lee-id", "lee", "Lee", None)
+        with self.assertRaisesRegex(ValueError, "activity_not_found"):
+            database.react_to_activity("lee-id", event["id"])
+
+    def test_report_requires_real_other_profile(self):
+        report = database.report_person("alex-id", "sam-id", "spam", "Repeated requests")
+        self.assertTrue(report["submitted"])
+        with self.assertRaisesRegex(ValueError, "cannot_report_self"):
+            database.report_person("alex-id", "alex-id", "spam")
+
 
 if __name__ == "__main__":
     unittest.main()
