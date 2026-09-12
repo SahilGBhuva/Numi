@@ -39,3 +39,6 @@
 
 .auth-guest-button:disabled { opacity: 0.6; cursor: wait; }
 .auth-guest-copy { margin: 9px 0 0; color: rgba(244, 239, 224, 0.58); font-size: 12px; line-height: 1.45; text-align: center; }
+
+/* The merged Tools view renders its wrench as an inline SVG; suppress the old branch's missing PNG background. */
+.order-bar__pop { background-image: none !important; }
