@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AuthGate } from './components/AuthGate'
 import { SiteHeader } from './lib/SiteHeader'
 import { SCREENS, SiteSidebar, type Screen } from './lib/SiteSidebar'
 import { Home } from './pages/Home'
@@ -27,26 +28,24 @@ function App() {
   }, [])
 
   return (
-    <div className="app-shell">
-      <SiteSidebar active={screen} />
-      <main className="sheet">
-        <span className="blob blob-a" aria-hidden="true" />
-        <span className="blob blob-b" aria-hidden="true" />
-        <SiteHeader onError={setNotice} />
-        {screen === 'home' ? <Home /> : null}
-        {screen === 'progress' ? <Progress /> : null}
-        {screen === 'games' ? <Games /> : null}
-        {screen === 'quests' ? <Quests /> : null}
-        {screen === 'profile' ? <Profile onError={setNotice} /> : null}
-        {screen === 'settings' ? <Settings /> : null}
-        {screen === 'more' ? <More /> : null}
-        {notice ? (
-          <p className="notice" role="status">
-            {notice}
-          </p>
-        ) : null}
-      </main>
-    </div>
+    <AuthGate>
+      <div className="app-shell">
+        <SiteSidebar active={screen} />
+        <main className="sheet">
+          <span className="blob blob-a" aria-hidden="true" />
+          <span className="blob blob-b" aria-hidden="true" />
+          <SiteHeader onError={setNotice} />
+          {screen === 'home' ? <Home /> : null}
+          {screen === 'progress' ? <Progress /> : null}
+          {screen === 'games' ? <Games /> : null}
+          {screen === 'quests' ? <Quests /> : null}
+          {screen === 'profile' ? <Profile onError={setNotice} /> : null}
+          {screen === 'settings' ? <Settings /> : null}
+          {screen === 'more' ? <More /> : null}
+          {notice ? <p className="notice" role="status">{notice}</p> : null}
+        </main>
+      </div>
+    </AuthGate>
   )
 }
 
