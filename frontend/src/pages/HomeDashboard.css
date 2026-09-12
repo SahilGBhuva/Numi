@@ -3,6 +3,12 @@
   padding: clamp(28px, 3vw, 48px) clamp(24px, 3vw, 48px) 64px;
 }
 
+.home-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
+
 .daily-card,
 .quick-card,
 .next-step-card,
@@ -51,10 +57,8 @@
   overflow: hidden;
   border: 2px solid rgba(88, 204, 2, 0.72);
   border-radius: 22px;
-  background:
-    radial-gradient(circle at 92% 12%, rgba(88, 204, 2, 0.18), transparent 34%),
-    linear-gradient(145deg, rgba(14, 42, 50, 0.98), rgba(9, 24, 38, 0.98));
-  box-shadow: 0 10px 24px rgba(3, 8, 18, 0.24);
+  background: #0d2331;
+  box-shadow: 0 8px 18px rgba(3, 8, 18, 0.18);
 }
 
 .next-step-copy p {
@@ -103,8 +107,8 @@
   padding: 22px;
   border: 2px solid rgba(187, 151, 255, 0.54);
   border-radius: 20px;
-  background: linear-gradient(145deg, rgba(18, 42, 66, 0.96), rgba(9, 22, 38, 0.98));
-  box-shadow: 0 9px 22px rgba(3, 8, 18, 0.22);
+  background: #0d1e30;
+  box-shadow: 0 7px 18px rgba(3, 8, 18, 0.18);
 }
 
 .path-card .section-title > strong {
