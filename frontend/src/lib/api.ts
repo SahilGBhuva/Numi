@@ -97,7 +97,7 @@ async function request<T>(path: string, options?: RequestInit, accessToken?: str
   const response = await fetch(`${API_URL}${path}`, { ...options, headers })
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(data?.detail ?? `bindet could not complete that request (${response.status}).`)
+    throw new Error(data?.detail ?? `bindit could not complete that request (${response.status}).`)
   }
   return response.json() as Promise<T>
 }
@@ -107,17 +107,18 @@ async function optimizedImage(file: File): Promise<File> {
   try {
     const bitmap = await createImageBitmap(file)
     const largestSide = Math.max(bitmap.width, bitmap.height)
-    if (file.size < 1_500_000 && largestSide <= 2000) {
+    // A 1400px note image is plenty for OCR while cutting network + vision payload size hard.
+    if (file.size <= 450_000 && largestSide <= 1400) {
       bitmap.close()
       return file
     }
-    const scale = Math.min(1, 2000 / largestSide)
+    const scale = Math.min(1, 1400 / largestSide)
     const canvas = document.createElement('canvas')
     canvas.width = Math.max(1, Math.round(bitmap.width * scale))
     canvas.height = Math.max(1, Math.round(bitmap.height * scale))
     canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
     bitmap.close()
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.86))
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.72))
     if (!blob || blob.size >= file.size) return file
     return new File([blob], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp', lastModified: file.lastModified })
   } catch {
@@ -177,7 +178,7 @@ export async function getProgress(studentId: string, accessToken?: string): Prom
   if (response.status === 404) return null
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(data?.detail ?? `bindet could not load progress (${response.status}).`)
+    throw new Error(data?.detail ?? `bindit could not load progress (${response.status}).`)
   }
   return response.json() as Promise<Progress>
 }
@@ -187,7 +188,7 @@ export async function getAccountProfile(accessToken: string): Promise<Profile | 
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (response.status === 404) return null
-  if (!response.ok) throw new Error('Could not load your bindet profile.')
+  if (!response.ok) throw new Error('Could not load your bindit profile.')
   return response.json() as Promise<Profile>
 }
 
@@ -206,24 +207,4 @@ export function saveAccountProfile(
     method: 'PUT',
     body: JSON.stringify(profile),
   }, accessToken)
-}
-
-export function getFriends(accessToken: string) {
-  return request<FriendsHub>('/api/friends', undefined, accessToken)
-}
-
-export function sendFriendRequest(friendCode: string, accessToken: string) {
-  return request('/api/friends/requests', { method: 'POST', body: JSON.stringify({ friend_code: friendCode }) }, accessToken)
-}
-
-export function answerFriendRequest(requestId: number, accept: boolean, accessToken: string) {
-  return request(`/api/friends/requests/${requestId}`, { method: 'POST', body: JSON.stringify({ accept }) }, accessToken)
-}
-
-export function removeFriend(friendId: string, accessToken: string) {
-  return request(`/api/friends/${encodeURIComponent(friendId)}`, { method: 'DELETE' }, accessToken)
-}
-
-export function startFriendQuest(friendId: string, accessToken: string) {
-  return request<FriendQuest>('/api/friend-quests', { method: 'POST', body: JSON.stringify({ friend_id: friendId, target_xp: 100 }) }, accessToken)
 }
