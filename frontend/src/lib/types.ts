@@ -46,6 +46,7 @@ export type Course = {
   name: string
   units: string[]
   tone?: string
+  image?: string
 }
 
 export type Notebook = {
@@ -53,4 +54,14 @@ export type Notebook = {
   activeCourse: string
   activeUnit: string
   deposits: NoteDeposit[]
+}
+
+export type UnitVerdict = 'locked' | 'seeded' | 'warming' | 'rising' | 'steady' | 'sharp' | 'slipping' | 'stuck'
+
+export type UnitAttempt = {
+  id: string
+  course: string
+  unit: string
+  correct: boolean
+  at: number
 }

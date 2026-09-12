@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { loadAuthSession, refreshAuthSession, signIn, signOut, signUp, type AuthSession } from '../lib/auth'
+import { loadAuthSession, refreshAuthSession, signIn, signUp, type AuthSession } from '../lib/auth'
 import { AuthContext } from '../lib/AuthContext'
 import './AuthGate.css'
+import './GuestAuth.css'
 import '../Brand.css'
 
 type Mode = 'login' | 'signup'
+const GUEST_KEY = 'bindit-guest-mode'
 
 function BrandMark() {
   return (
@@ -17,6 +19,7 @@ function BrandMark() {
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(loadAuthSession())
   const [loading, setLoading] = useState(Boolean(session))
+  const [guestMode, setGuestMode] = useState(() => localStorage.getItem(GUEST_KEY) === '1')
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -35,7 +38,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, [password])
 
   useEffect(() => {
-    if (!session) return setLoading(false)
+    if (!session) {
+      setLoading(false)
+      return
+    }
     void refreshAuthSession(session).then((next) => {
       setSession(next)
       setLoading(false)
@@ -50,22 +56,28 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setShowPassword(false)
   }
 
+  function continueAsGuest() {
+    localStorage.setItem(GUEST_KEY, '1')
+    setGuestMode(true)
+    setError('')
+    setMessage('')
+  }
+
   if (loading) {
     return (
       <main className="auth-screen auth-loading-screen">
         <div className="auth-loading-orb" aria-hidden="true" />
-        <p>Opening Bindit…</p>
+        <p>Opening bindit…</p>
       </main>
     )
   }
 
-  if (!session) {
+  if (!session && !guestMode) {
     async function submit(event: FormEvent) {
       event.preventDefault()
       setBusy(true)
       setError('')
       setMessage('')
-
       try {
         if (mode === 'login') {
           setSession(await signIn(email.trim(), password))
@@ -89,43 +101,29 @@ export function AuthGate({ children }: { children: ReactNode }) {
       <main className="auth-screen">
         <section className="auth-shell">
           <aside className="auth-story">
-            <div className="auth-brand-row">
-              <BrandMark />
-              <span>Bindit</span>
-            </div>
+            <div className="auth-brand-row"><BrandMark /><span>bindit</span></div>
             <div className="auth-story-copy">
               <span className="auth-eyebrow">Study smarter, consistently.</span>
               <h1>Turn scattered studying into connected understanding.</h1>
               <p>Build momentum, connect ideas, and keep everything you learn in one place.</p>
             </div>
             <div className="auth-preview-card auth-preview-card--brand">
-              <img className="auth-preview-mascot" src="/bindit-mascot.webp" alt="Bindit otter mascot" />
+              <img className="auth-preview-mascot" src="/bindit-mascot.webp" alt="bindit otter mascot" />
               <div className="auth-preview-content">
-                <div className="auth-preview-top">
-                  <span className="auth-preview-dot" />
-                  <span>Today’s progress</span>
-                </div>
+                <div className="auth-preview-top"><span className="auth-preview-dot" /><span>Today’s progress</span></div>
                 <strong>3 concepts connected</strong>
                 <div className="auth-progress-track"><span /></div>
-                <div className="auth-preview-tags">
-                  <span>Functions</span>
-                  <span>Vectors</span>
-                  <span>Biology</span>
-                </div>
+                <div className="auth-preview-tags"><span>Functions</span><span>Vectors</span><span>Biology</span></div>
               </div>
             </div>
           </aside>
 
           <section className="auth-panel">
-            <div className="auth-mobile-brand">
-              <BrandMark />
-              <span>Bindit</span>
-            </div>
-
+            <div className="auth-mobile-brand"><BrandMark /><span>bindit</span></div>
             <div className="auth-panel-inner">
               <div className="auth-heading">
                 <span className="auth-kicker">{mode === 'login' ? 'Welcome back' : 'Start your learning system'}</span>
-                <h2>{mode === 'login' ? 'Log in to Bindit' : 'Create your account'}</h2>
+                <h2>{mode === 'login' ? 'Log in to bindit' : 'Create your account'}</h2>
                 <p>{mode === 'login' ? 'Pick up right where you left off.' : 'A few seconds now, a much better study flow later.'}</p>
               </div>
 
@@ -137,63 +135,36 @@ export function AuthGate({ children }: { children: ReactNode }) {
               <form className="auth-form" onSubmit={submit}>
                 <label>
                   <span>Email</span>
-                  <input
-                    type="email"
-                    inputMode="email"
-                    autoComplete="email"
-                    placeholder="you@example.com"
-                    required
-                    disabled={busy}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
+                  <input type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" required disabled={busy} value={email} onChange={(event) => setEmail(event.target.value)} />
                 </label>
-
                 <label>
                   <span>Password</span>
                   <div className="auth-password-wrap">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                      minLength={mode === 'signup' ? 8 : 6}
-                      placeholder={mode === 'signup' ? 'At least 8 characters' : 'Enter your password'}
-                      required
-                      disabled={busy}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                    <button className="auth-show-password" type="button" disabled={busy} aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((value) => !value)}>
-                      {showPassword ? 'Hide' : 'Show'}
-                    </button>
+                    <input type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'signup' ? 8 : 6} placeholder={mode === 'signup' ? 'At least 8 characters' : 'Enter your password'} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} />
+                    <button className="auth-show-password" type="button" disabled={busy} aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((value) => !value)}>{showPassword ? 'Hide' : 'Show'}</button>
                   </div>
                 </label>
 
                 {mode === 'signup' && password ? (
                   <div className="auth-strength" aria-live="polite">
-                    <div className="auth-strength-bars">
-                      {[0, 1, 2, 3].map((index) => <span key={index} className={index < passwordScore ? 'filled' : ''} />)}
-                    </div>
+                    <div className="auth-strength-bars">{[0, 1, 2, 3].map((index) => <span key={index} className={index < passwordScore ? 'filled' : ''} />)}</div>
                     <small>{passwordScore <= 1 ? 'Make it stronger' : passwordScore === 2 ? 'Good password' : 'Strong password'}</small>
                   </div>
                 ) : null}
 
                 {error ? <div className="auth-feedback auth-error" role="alert">{error}</div> : null}
                 {message ? <div className="auth-feedback auth-message" role="status">{message}</div> : null}
-
-                <button className="auth-primary" type="submit" disabled={busy}>
-                  {busy ? <><span className="auth-spinner" aria-hidden="true" />Working…</> : mode === 'login' ? 'Log in' : 'Create account'}
-                </button>
-
-                <p className="auth-terms">
-                  {mode === 'signup' ? 'By creating an account, you agree to use Bindit responsibly.' : 'Your progress stays connected to your account.'}
-                </p>
+                <button className="auth-primary" type="submit" disabled={busy}>{busy ? <><span className="auth-spinner" aria-hidden="true" />Working…</> : mode === 'login' ? 'Log in' : 'Create account'}</button>
+                <p className="auth-terms">{mode === 'signup' ? 'By creating an account, you agree to use bindit responsibly.' : 'Your progress stays connected to your account.'}</p>
               </form>
 
+              <div className="auth-guest-separator"><span>or</span></div>
+              <button className="auth-guest-button" type="button" disabled={busy} onClick={continueAsGuest}>Continue as guest</button>
+              <p className="auth-guest-copy">Guest progress stays on this browser and can be claimed when you create a profile.</p>
+
               <p className="auth-switch-copy">
-                {mode === 'login' ? 'New to Bindit?' : 'Already have an account?'}{' '}
-                <button type="button" disabled={busy} onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}>
-                  {mode === 'login' ? 'Create an account' : 'Log in'}
-                </button>
+                {mode === 'login' ? 'New to bindit?' : 'Already have an account?'}{' '}
+                <button type="button" disabled={busy} onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Create an account' : 'Log in'}</button>
               </p>
             </div>
           </section>
@@ -202,10 +173,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
     )
   }
 
-  return (
-    <AuthContext.Provider value={{ session, setSession }}>
-      {children}
-      <button className="auth-logout" type="button" onClick={() => { signOut(); setSession(null) }}>Log out</button>
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={{ session, setSession }}>{children}</AuthContext.Provider>
 }

@@ -1,4 +1,9 @@
-export type AuthUser = { id: string; email?: string; user_metadata?: { username?: string; [key: string]: unknown } }
+export type AuthUser = {
+  id: string
+  email?: string
+  user_metadata?: { username?: string; [key: string]: unknown }
+}
+
 export type AuthSession = {
   access_token: string
   refresh_token: string
@@ -10,6 +15,7 @@ type AuthConfig = { supabase_url: string; supabase_anon_key: string }
 type AuthResponse = Partial<AuthSession> & { expires_in?: number; user?: AuthUser }
 
 const SESSION_KEY = 'bindit-auth-session'
+const LEGACY_SESSION_KEY = 'numi-auth-session'
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 let configPromise: Promise<AuthConfig> | null = null
 
@@ -22,21 +28,29 @@ function config() {
 }
 
 export function loadAuthSession(): AuthSession | null {
-  const raw = localStorage.getItem(SESSION_KEY)
+  const raw = localStorage.getItem(SESSION_KEY) ?? localStorage.getItem(LEGACY_SESSION_KEY)
   if (!raw) return null
   try {
     const session = JSON.parse(raw) as AuthSession
     if (!session.access_token || !session.refresh_token || !session.user?.id) throw new Error('Invalid session')
+    localStorage.setItem(SESSION_KEY, raw)
+    localStorage.removeItem(LEGACY_SESSION_KEY)
     return session
   } catch {
     localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(LEGACY_SESSION_KEY)
     return null
   }
 }
 
 export function saveAuthSession(session: AuthSession | null) {
-  if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session))
-  else localStorage.removeItem(SESSION_KEY)
+  if (session) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    localStorage.removeItem(LEGACY_SESSION_KEY)
+  } else {
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(LEGACY_SESSION_KEY)
+  }
 }
 
 async function authRequest(path: string, body: Record<string, string>): Promise<AuthResponse> {
@@ -46,15 +60,24 @@ async function authRequest(path: string, body: Record<string, string>): Promise<
     headers: { apikey: settings.supabase_anon_key, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data.msg ?? data.error_description ?? data.message ?? 'Account request failed.')
+  const text = await response.text()
+  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {}
+  if (!response.ok) {
+    const message = [data.msg, data.error_description, data.message].find((value) => typeof value === 'string')
+    throw new Error((message as string | undefined) ?? 'Account request failed.')
+  }
   return data as AuthResponse
 }
 
 function asSession(data: AuthResponse): AuthSession | null {
   if (!data.access_token || !data.refresh_token || !data.user?.id) return null
   const expiresAt = data.expires_at ?? (data.expires_in ? Math.floor(Date.now() / 1000) + data.expires_in : undefined)
-  return { ...data, expires_at: expiresAt, access_token: data.access_token, refresh_token: data.refresh_token, user: data.user }
+  return {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: expiresAt,
+    user: data.user,
+  }
 }
 
 export async function refreshAuthSession(session: AuthSession): Promise<AuthSession | null> {
@@ -81,6 +104,10 @@ export async function signIn(email: string, password: string) {
   if (!session) throw new Error('Could not create a login session.')
   saveAuthSession(session)
   return session
+}
+
+export async function requestPasswordReset(email: string) {
+  await authRequest('recover', { email })
 }
 
 export async function updateUsername(session: AuthSession, username: string): Promise<AuthSession> {

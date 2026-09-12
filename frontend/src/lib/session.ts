@@ -15,10 +15,8 @@ const LEGACY_KEYS = {
 function readMigrated(key: string, legacyKey: string): string | null {
   const current = localStorage.getItem(key)
   if (current !== null) return current
-
   const legacy = localStorage.getItem(legacyKey)
   if (legacy === null) return null
-
   localStorage.setItem(key, legacy)
   localStorage.removeItem(legacyKey)
   return legacy
@@ -49,10 +47,9 @@ export function withCourseTones(courses: Course[]): Course[] {
   return courses.map((course, index) => {
     if (course.tone) return course
     const preferred = PINNED_TONES[course.name] ?? hashTone(course.name)
-    const tone =
-      !taken.has(preferred)
-        ? preferred
-        : (COURSE_TONES.find((item) => !taken.has(item)) ?? COURSE_TONES[index % COURSE_TONES.length])
+    const tone = !taken.has(preferred)
+      ? preferred
+      : (COURSE_TONES.find((item) => !taken.has(item)) ?? COURSE_TONES[index % COURSE_TONES.length])
     taken.add(tone)
     return { ...course, tone }
   })
@@ -66,7 +63,6 @@ export function pickCourseTone(courses: Course[]): string {
 export function getStudentId(): string {
   const savedId = readMigrated(STUDENT_ID_KEY, LEGACY_KEYS.studentId)
   if (savedId) return savedId
-
   const studentId = crypto.randomUUID()
   localStorage.setItem(STUDENT_ID_KEY, studentId)
   return studentId
@@ -77,9 +73,7 @@ export function loadNotebook(): Notebook {
   if (!raw) return emptyNotebook
   try {
     const parsed = JSON.parse(raw) as Notebook
-    if (!Array.isArray(parsed.courses)) {
-      return emptyNotebook
-    }
+    if (!Array.isArray(parsed.courses)) return emptyNotebook
     const courses: Course[] = withCourseTones(
       parsed.courses.map((course) => (typeof course === 'string' ? { name: course, units: [] } : course)),
     )
@@ -122,33 +116,40 @@ export function saveAvatar(dataUrl: string): void {
   localStorage.setItem(AVATAR_KEY, dataUrl)
 }
 
-export function fileToAvatarDataUrl(file: File): Promise<string> {
+export function fileToCourseImageDataUrl(file: File): Promise<string> {
+  return fileToCoverDataUrl(file, 480, 640)
+}
+
+function fileToCoverDataUrl(file: File, width: number, height: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error('Could not read image'))
     reader.onload = () => {
       const image = new Image()
       image.onload = () => {
-        const size = 256
         const canvas = document.createElement('canvas')
-        canvas.width = size
-        canvas.height = size
+        canvas.width = width
+        canvas.height = height
         const ctx = canvas.getContext('2d')
         if (!ctx) {
           resolve(String(reader.result))
           return
         }
-        const side = Math.min(image.width, image.height)
-        const sx = (image.width - side) / 2
-        const sy = (image.height - side) / 2
-        ctx.drawImage(image, sx, sy, side, side, 0, 0, size, size)
-        resolve(canvas.toDataURL('image/jpeg', 0.86))
+        const scale = Math.max(width / image.width, height / image.height)
+        const dw = image.width * scale
+        const dh = image.height * scale
+        ctx.drawImage(image, (width - dw) / 2, (height - dh) / 2, dw, dh)
+        resolve(canvas.toDataURL('image/jpeg', 0.84))
       }
       image.onerror = () => reject(new Error('Could not load image'))
       image.src = String(reader.result)
     }
     reader.readAsDataURL(file)
   })
+}
+
+export function fileToAvatarDataUrl(file: File): Promise<string> {
+  return fileToCoverDataUrl(file, 256, 256)
 }
 
 export function createDraftSession(topic: string, notes: string): Session {

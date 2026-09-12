@@ -14,6 +14,7 @@ import main
 
 class BinditBackendTests(unittest.TestCase):
     def setUp(self):
+        main.questions.reset_questions()
         main.database.reset_db()
 
     @classmethod
@@ -22,13 +23,7 @@ class BinditBackendTests(unittest.TestCase):
             os.unlink(TEST_DB.name)
 
     def save_math_question(self, student_id='student-1'):
-        return main.database.save_question(
-            student_id,
-            'What is 2 + 2?',
-            '4',
-            'addition',
-            1,
-        )
+        return main.questions.save_question(student_id, 'What is 2 + 2?', '4', 'addition', 1)
 
     def test_yes_no_and_filename_answers(self):
         self.assertTrue(main.answers_match('Yes', 'yes'))
@@ -48,102 +43,134 @@ class BinditBackendTests(unittest.TestCase):
             self.assertTrue(question.correct_answer)
             self.assertIn(question.topic, ('addition', 'subtraction', 'multiplication', 'division'))
 
-    def test_notes_question_generation(self):
+    def test_notes_question_tracks_unit_as_topic(self):
         question = main.generate_notes_question(
-            main.NoteContext(
-                course='Biology',
-                unit='Heredity',
-                files=['mendel.pdf', 'dna.txt'],
-                other_units=['Cell structure'],
-                other_courses=['Chemistry'],
-            ),
+            main.NoteContext(course='Biology', unit='Heredity', files=['mendel.pdf', 'dna.txt']),
             2,
         )
         self.assertTrue(question.question)
         self.assertTrue(question.correct_answer)
-        self.assertEqual(question.topic, 'notes')
+        self.assertEqual(question.topic, 'Heredity')
 
-    def test_public_question_hides_answer_and_stores_it_server_side(self):
-        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-1'}):
-            response = main.generate_question(main.QuestionRequest(topic='addition', difficulty=1), 'Bearer test')
+    def test_public_question_hides_answer_for_guest(self):
+        response = main.generate_question(
+            main.QuestionRequest(topic='addition', difficulty=1, student_id='guest-1')
+        )
         self.assertTrue(response.question_id)
         self.assertFalse(hasattr(response, 'correct_answer'))
-        stored = main.database.get_question('student-1', response.question_id)
+        stored = main.questions.get_question('guest-1', response.question_id)
         self.assertIsNotNone(stored)
         self.assertTrue(stored['correct_answer'])
+
+    def test_public_question_hides_answer_for_authenticated_user(self):
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'account-1'}):
+            response = main.generate_question(
+                main.QuestionRequest(topic='addition', difficulty=1, student_id='spoofed'),
+                'Bearer test',
+            )
+        self.assertIsNone(main.questions.get_question('spoofed', response.question_id))
+        self.assertIsNotNone(main.questions.get_question('account-1', response.question_id))
 
     def test_client_cannot_submit_its_own_correct_answer(self):
         with self.assertRaises(ValidationError):
             main.AnswerRequest(
                 question_id='a' * 32,
                 student_answer='999',
+                student_id='student-1',
                 correct_answer='999',
             )
 
-    def test_answer_updates_authenticated_users_progress(self):
-        question_id = self.save_math_question()
-        request = main.AnswerRequest(question_id=question_id, student_answer='4')
-        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-1'}):
-            result = main.analyze_answer(request, 'Bearer test')
-        progress = main.database.get_progress('student-1')
+    def test_guest_answer_updates_guest_progress(self):
+        question_id = self.save_math_question('guest-1')
+        result = main.analyze_answer(
+            main.AnswerRequest(question_id=question_id, student_answer='4', student_id='guest-1')
+        )
+        progress = main.database.get_progress('guest-1')
         self.assertTrue(result.correct)
         self.assertEqual(result.xp_earned, 10)
         self.assertEqual(progress['total_xp'], 10)
-        self.assertEqual(progress['correct_answers'], 1)
+
+    def test_authenticated_identity_overrides_spoofed_student_id(self):
+        question_id = self.save_math_question('account-1')
+        request = main.AnswerRequest(question_id=question_id, student_answer='4', student_id='spoofed')
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'account-1'}):
+            result = main.analyze_answer(request, 'Bearer test')
+        self.assertTrue(result.correct)
+        self.assertIsNone(main.database.get_progress('spoofed'))
+        self.assertEqual(main.database.get_progress('account-1')['total_xp'], 10)
+
+    def test_question_is_bound_to_identity(self):
+        question_id = self.save_math_question('account-1')
+        request = main.AnswerRequest(question_id=question_id, student_answer='4', student_id='spoofed')
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'account-2'}):
+            with self.assertRaises(main.HTTPException) as context:
+                main.analyze_answer(request, 'Bearer test')
+        self.assertEqual(context.exception.status_code, 404)
+        self.assertIsNone(main.database.get_progress('account-2'))
 
     def test_wrong_answer_can_be_retried(self):
-        question_id = self.save_math_question()
-        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-1'}):
-            wrong = main.analyze_answer(
-                main.AnswerRequest(question_id=question_id, student_answer='5'),
-                'Bearer test',
-            )
-            correct = main.analyze_answer(
-                main.AnswerRequest(question_id=question_id, student_answer='4'),
-                'Bearer test',
-            )
-        progress = main.database.get_progress('student-1')
+        question_id = self.save_math_question('guest-1')
+        wrong = main.analyze_answer(main.AnswerRequest(question_id=question_id, student_answer='5', student_id='guest-1'))
+        correct = main.analyze_answer(main.AnswerRequest(question_id=question_id, student_answer='4', student_id='guest-1'))
+        progress = main.database.get_progress('guest-1')
         self.assertFalse(wrong.correct)
         self.assertTrue(correct.correct)
         self.assertEqual(progress['attempts'], 2)
-        self.assertEqual(progress['correct_answers'], 1)
         self.assertEqual(progress['total_xp'], 10)
 
     def test_completed_question_cannot_award_xp_twice(self):
-        question_id = self.save_math_question()
-        request = main.AnswerRequest(question_id=question_id, student_answer='4')
-        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-1'}):
-            main.analyze_answer(request, 'Bearer test')
-            with self.assertRaises(main.HTTPException) as context:
-                main.analyze_answer(request, 'Bearer test')
+        question_id = self.save_math_question('guest-1')
+        request = main.AnswerRequest(question_id=question_id, student_answer='4', student_id='guest-1')
+        main.analyze_answer(request)
+        with self.assertRaises(main.HTTPException) as context:
+            main.analyze_answer(request)
         self.assertEqual(context.exception.status_code, 409)
-        progress = main.database.get_progress('student-1')
+        progress = main.database.get_progress('guest-1')
         self.assertEqual(progress['total_xp'], 10)
         self.assertEqual(progress['attempts'], 1)
 
-    def test_question_is_bound_to_authenticated_account(self):
-        question_id = self.save_math_question('student-1')
-        request = main.AnswerRequest(question_id=question_id, student_answer='4')
-        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-2'}):
-            with self.assertRaises(main.HTTPException) as context:
-                main.analyze_answer(request, 'Bearer test')
-        self.assertEqual(context.exception.status_code, 404)
-        self.assertIsNone(main.database.get_progress('student-2'))
+    def test_guest_progress_is_claimed_once_by_account(self):
+        main.database.update_progress('guest-1', 'addition', True, 10)
+        main.database.update_progress('guest-1', 'addition', False, 0)
+        profile = main.database.onboard_account('account-1', 'bindit_learner', 'bindit Learner', 'guest-1')
+        first = main.database.get_progress('account-1')
+        main.database.onboard_account('account-1', 'bindit_learner', 'bindit Learner', 'guest-1')
+        second = main.database.get_progress('account-1')
+        self.assertEqual(profile['username'], 'bindit_learner')
+        self.assertTrue(profile['friend_code'])
+        self.assertEqual(first['total_xp'], 10)
+        self.assertEqual(first['attempts'], 2)
+        self.assertEqual(first, second)
 
-    def test_progress_endpoint_uses_authenticated_identity(self):
-        question_id = self.save_math_question()
-        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-1'}):
-            main.analyze_answer(main.AnswerRequest(question_id=question_id, student_answer='4'), 'Bearer test')
-            progress = main.get_my_progress('Bearer test')
-        self.assertEqual(progress.student_id, 'student-1')
-        self.assertEqual(progress.total_xp, 10)
-        self.assertEqual(progress.accuracy, 100.0)
+    def test_guest_progress_cannot_be_stolen_from_existing_account(self):
+        main.database.onboard_account('real-account', 'real_user', 'Real')
+        main.database.update_progress('real-account', 'addition', True, 10)
+        thief = main.database.onboard_account('thief-account', 'thief_user', 'Thief', 'real-account')
+        self.assertEqual(thief['total_xp'], 0)
 
-    def test_unknown_student_progress_returns_404(self):
-        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'missing'}):
-            with self.assertRaises(main.HTTPException) as context:
-                main.get_my_progress('Bearer test')
-        self.assertEqual(context.exception.status_code, 404)
+    def test_account_profile_requires_token(self):
+        with self.assertRaises(main.HTTPException) as context:
+            main.get_account_profile(None)
+        self.assertEqual(context.exception.status_code, 401)
+
+    def test_daily_login_streak_increments_once_per_day(self):
+        first = main.daily_login(main.DailyLoginRequest(student_id='login-student'))
+        second = main.daily_login(main.DailyLoginRequest(student_id='login-student'))
+        self.assertEqual(first.login_streak, 1)
+        self.assertEqual(second.login_streak, 1)
+        self.assertEqual(first.best_login_streak, 1)
+
+    def test_unit_accuracy_is_returned_per_topic(self):
+        q1 = self.save_math_question('unit-student')
+        main.analyze_answer(main.AnswerRequest(question_id=q1, student_answer='5', student_id='unit-student'))
+        q2 = self.save_math_question('unit-student')
+        main.analyze_answer(main.AnswerRequest(question_id=q2, student_answer='4', student_id='unit-student'))
+        progress = main.get_progress('unit-student')
+        self.assertEqual(len(progress.topics), 1)
+        self.assertEqual(progress.topics[0].topic, 'addition')
+        self.assertEqual(progress.topics[0].attempts, 2)
+        self.assertEqual(progress.topics[0].correct_answers, 1)
+        self.assertEqual(progress.topics[0].accuracy, 50.0)
 
 
 if __name__ == '__main__':

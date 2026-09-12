@@ -68,17 +68,14 @@
   color: #f4efe0;
   text-decoration: none;
   outline: none;
-  transition:
-    border-color 0.18s ease,
-    color 0.18s ease,
-    background-color 0.18s ease,
-    transform 0.12s ease;
+  transition: border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease, transform 0.12s ease;
 }
 
 .bindit-rail__item.is-home { --item-accent: #8b5cf6; }
+.bindit-rail__item.is-tools { --item-accent: #9b8cff; }
 .bindit-rail__item.is-progress { --item-accent: #6f9a7a; }
 .bindit-rail__item.is-games { --item-accent: #ff725e; }
-.bindit-rail__item.is-quests { --item-accent: #e0a045; }
+.bindit-rail__item.is-goals { --item-accent: #e0a045; }
 .bindit-rail__item.is-profile { --item-accent: #b57ad4; }
 .bindit-rail__item.is-settings { --item-accent: #c8bf8a; }
 .bindit-rail__item.is-more { --item-accent: #a78bfa; }
@@ -105,25 +102,15 @@
   text-transform: uppercase;
 }
 
-.bindit-rail__item:hover {
-  background: rgba(232, 223, 176, 0.05);
-}
-
-.bindit-rail__item:focus-visible {
-  border-color: var(--item-accent);
-}
-
-.bindit-rail__item:active {
-  transform: translateY(1px);
-}
+.bindit-rail__item:hover { background: rgba(232, 223, 176, 0.05); }
+.bindit-rail__item:focus-visible { border-color: var(--item-accent); }
+.bindit-rail__item:active { transform: translateY(1px); }
 
 .bindit-rail__item.is-active {
   color: var(--item-accent);
   border-color: var(--item-accent);
   background: rgba(12, 24, 38, 0.55);
-  box-shadow:
-    inset 0 1px 0 rgba(232, 223, 176, 0.08),
-    0 0 0 1px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 1px 0 rgba(232, 223, 176, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .bindit-rail__item.is-active::before,
@@ -137,15 +124,8 @@
   box-shadow: inset 0 0 0 1px rgba(40, 24, 8, 0.35);
 }
 
-.bindit-rail__item.is-active::before {
-  top: 8px;
-  right: 10px;
-}
-
-.bindit-rail__item.is-active::after {
-  bottom: 8px;
-  right: 10px;
-}
+.bindit-rail__item.is-active::before { top: 8px; right: 10px; }
+.bindit-rail__item.is-active::after { bottom: 8px; right: 10px; }
 
 @media (max-width: 860px) {
   .bindit-rail {
@@ -156,43 +136,15 @@
     border-bottom: 1px solid rgba(232, 223, 176, 0.12);
   }
 
-  .bindit-rail__brand {
-    margin: 0 4px 10px;
-    font-size: 26px;
-  }
-
-  .bindit-rail__brand-mark {
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-  }
-
-  .bindit-rail__list {
-    flex-direction: row;
-    overflow-x: auto;
-    gap: 4px;
-    padding-bottom: 8px;
-  }
-
-  .bindit-rail__item {
-    min-height: 48px;
-    padding: 6px 10px;
-    flex: none;
-  }
-
-  .bindit-rail__label {
-    font-size: 12px;
-    letter-spacing: 0.06em;
-  }
-
+  .bindit-rail__brand { margin: 0 4px 10px; font-size: 26px; }
+  .bindit-rail__brand-mark { width: 32px; height: 32px; border-radius: 10px; }
+  .bindit-rail__list { flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 8px; }
+  .bindit-rail__item { min-height: 48px; padding: 6px 10px; flex: none; }
+  .bindit-rail__label { font-size: 12px; letter-spacing: 0.06em; }
   .bindit-rail__item.is-active::before,
-  .bindit-rail__item.is-active::after {
-    display: none;
-  }
+  .bindit-rail__item.is-active::after { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bindit-rail__item {
-    transition: none;
-  }
+  .bindit-rail__item { transition: none; }
 }

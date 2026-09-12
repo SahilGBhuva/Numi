@@ -7,6 +7,25 @@
   align-items: start;
 }
 
+.sheet.is-home { --page-accent: var(--accent-home); }
+.sheet.is-tools { --page-accent: var(--accent-tools); }
+.sheet.is-progress { --page-accent: var(--accent-progress); }
+.sheet.is-games { --page-accent: var(--accent-games); }
+.sheet.is-goals { --page-accent: var(--accent-goals); }
+.sheet.is-profile { --page-accent: var(--accent-profile); }
+.sheet.is-settings { --page-accent: var(--accent-settings); }
+.sheet.is-more { --page-accent: var(--accent-more); }
+
+.sheet .board,
+.sheet .home__quote,
+.sheet.is-tools .courses,
+.sheet.is-tools .order-bar,
+.sheet.is-tools .panel,
+.sheet.is-profile .profile-main,
+.sheet.is-profile .profile-panels {
+  border-color: var(--page-accent);
+}
+
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;

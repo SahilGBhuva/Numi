@@ -1,28 +1,70 @@
 import { loadAuthSession, refreshAuthSession } from './auth'
+import { getStudentId } from './session'
 
 export type Topic = 'addition' | 'subtraction' | 'multiplication' | 'division' | 'mixed'
 export type GeneratedQuestion = { question_id: string; question: string; topic: string; difficulty: number }
-export type NoteQuizContext = { course: string; unit: string; files: string[]; other_units: string[]; other_courses: string[] }
-export type AnswerResult = { correct: boolean; mistake_type: string | null; explanation: string; hint: string | null; xp_earned: number; total_xp: number; streak: number }
-export type Progress = { student_id: string; total_xp: number; attempts: number; correct_answers: number; accuracy: number; streak: number; best_streak: number; weak_topics: string[] }
+export type NoteQuizContext = {
+  course: string
+  unit: string
+  files: string[]
+  other_units: string[]
+  other_courses: string[]
+}
+export type AnswerResult = {
+  correct: boolean
+  mistake_type: string | null
+  explanation: string
+  hint: string | null
+  xp_earned: number
+  total_xp: number
+  streak: number
+}
+export type TopicStat = { topic: string; attempts: number; correct_answers: number; accuracy: number }
+export type Progress = {
+  student_id: string
+  total_xp: number
+  attempts: number
+  correct_answers: number
+  accuracy: number
+  streak: number
+  best_streak: number
+  login_streak: number
+  best_login_streak: number
+  weak_topics: string[]
+  topics: TopicStat[]
+}
+export type Profile = {
+  student_id: string
+  username: string
+  display_name: string
+  avatar_path: string
+  friend_code: string
+  daily_goal: number
+  total_xp: number
+  streak: number
+  best_streak: number
+  login_streak: number
+  best_login_streak: number
+}
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-async function authHeaders() {
+async function resolvedToken(explicit?: string): Promise<string | undefined> {
+  if (explicit) return explicit
   const saved = loadAuthSession()
   const session = saved ? await refreshAuthSession(saved) : null
-  if (!session) throw new Error('Please log in again.')
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }
+  return session?.access_token
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: { ...(await authHeaders()), ...(options?.headers ?? {}) },
-  })
+async function request<T>(path: string, options?: RequestInit, accessToken?: string): Promise<T> {
+  const headers = new Headers(options?.headers)
+  if (!(options?.body instanceof FormData)) headers.set('Content-Type', 'application/json')
+  const token = await resolvedToken(accessToken)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const response = await fetch(`${API_URL}${path}`, { ...options, headers })
   if (!response.ok) {
-    const detail = await response.json().catch(() => null) as { detail?: string } | null
-    throw new Error(detail?.detail ?? `Bindit API returned ${response.status}`)
+    const data = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(data?.detail ?? `bindit could not complete that request (${response.status}).`)
   }
   return response.json() as Promise<T>
 }
@@ -30,20 +72,57 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export function generateQuestion(topic: Topic, difficulty: number, notes?: NoteQuizContext) {
   return request<GeneratedQuestion>('/api/generate-question', {
     method: 'POST',
-    body: JSON.stringify({ topic, difficulty, notes: notes && notes.files.length > 0 ? notes : undefined }),
+    body: JSON.stringify({
+      topic,
+      difficulty,
+      student_id: getStudentId(),
+      notes: notes && notes.files.length > 0 ? notes : undefined,
+    }),
   })
 }
 
-export function analyzeAnswer(question: GeneratedQuestion, studentAnswer: string, _studentId: string) {
+export function analyzeAnswer(question: GeneratedQuestion, studentAnswer: string, studentId: string, accessToken?: string) {
   return request<AnswerResult>('/api/analyze-answer', {
     method: 'POST',
-    body: JSON.stringify({ question_id: question.question_id, student_answer: studentAnswer }),
-  })
+    body: JSON.stringify({ question_id: question.question_id, student_answer: studentAnswer, student_id: studentId }),
+  }, accessToken)
 }
 
-export async function getProgress(_studentId?: string): Promise<Progress | null> {
-  const response = await fetch(`${API_URL}/api/progress/me`, { headers: await authHeaders() })
+export async function getProgress(studentId: string, accessToken?: string): Promise<Progress | null> {
+  const headers = new Headers()
+  const token = await resolvedToken(accessToken)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const response = await fetch(`${API_URL}/api/progress/${encodeURIComponent(studentId)}`, { headers })
   if (response.status === 404) return null
-  if (!response.ok) throw new Error(`Bindit API returned ${response.status}`)
+  if (!response.ok) {
+    const data = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(data?.detail ?? `bindit could not load progress (${response.status}).`)
+  }
   return response.json() as Promise<Progress>
+}
+
+export async function getAccountProfile(accessToken: string): Promise<Profile | null> {
+  const response = await fetch(`${API_URL}/api/account/profile`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error('Could not load your bindit profile.')
+  return response.json() as Promise<Profile>
+}
+
+export function recordDailyLogin(studentId: string, accessToken?: string) {
+  return request<Progress>('/api/daily-login', {
+    method: 'POST',
+    body: JSON.stringify({ student_id: studentId }),
+  }, accessToken)
+}
+
+export function saveAccountProfile(
+  accessToken: string,
+  profile: { username: string; display_name: string; guest_id: string; daily_goal?: number; avatar_path?: string },
+) {
+  return request<Profile>('/api/account/profile', {
+    method: 'PUT',
+    body: JSON.stringify(profile),
+  }, accessToken)
 }
