@@ -107,17 +107,26 @@ async function optimizedImage(file: File): Promise<File> {
   try {
     const bitmap = await createImageBitmap(file)
     const largestSide = Math.max(bitmap.width, bitmap.height)
-    if (file.size < 1_500_000 && largestSide <= 2000) {
+    if (file.size < 1_000_000 && largestSide <= 1800) {
       bitmap.close()
       return file
     }
-    const scale = Math.min(1, 2000 / largestSide)
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
-    canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const scale = Math.min(1, 1800 / largestSide)
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+    let blob: Blob | null = null
+    if (typeof OffscreenCanvas !== 'undefined') {
+      const canvas = new OffscreenCanvas(width, height)
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, width, height)
+      blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.82 })
+    } else {
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, width, height)
+      blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.82))
+    }
     bitmap.close()
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.86))
     if (!blob || blob.size >= file.size) return file
     return new File([blob], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp', lastModified: file.lastModified })
   } catch {

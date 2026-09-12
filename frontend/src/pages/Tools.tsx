@@ -14,6 +14,7 @@ import {
 } from '../lib/session'
 import type { Course, NoteDeposit } from '../lib/types'
 import './Home.css'
+import './ToolsMotion.css'
 
 const QUIZ_TOPICS: { id: Topic; label: string }[] = [
   { id: 'mixed', label: 'Mixed' },
@@ -596,6 +597,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   }
 
   async function loadQuizQuestion() {
+    if (quizBusy) return
     setQuizBusy(true)
     setQuizError('')
     setQuizResult(null)
@@ -644,7 +646,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
 
   async function sendUpload(event: FormEvent) {
     event.preventDefault()
-    if (!file) return
+    if (!file || uploadBusy) return
     if (!activeUnit) {
       setNotice(`Create a unit in ${activeCourse} first, then send your notes there.`)
       return
@@ -1151,7 +1153,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
             <div className="panel">
               <div className="panel-pages" ref={pagesRef}>
                 <section className="panel-page panel-page--scan" aria-label="Scan and notes">
-                  <form className="scan" onSubmit={sendUpload}>
+                  <form className={`scan${uploadBusy ? ' is-reading' : ''}`} onSubmit={sendUpload} aria-busy={uploadBusy}>
                     <div className="scan__stage">
                       <span className="scan__label">Camera / upload</span>
                       <span className="tab" aria-hidden="true" />
@@ -1166,10 +1168,11 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                         <CameraMark />
                         <strong>Scan / upload file</strong>
                         {file ? <small>{file.name}</small> : null}
+                        {uploadBusy ? <span className="scan-progress" role="status"><i /><i /><i /><b>Optimizing and reading your notes</b></span> : null}
                       </button>
                     </div>
                     <button className="send" type="submit" disabled={!file || uploadBusy}>
-                      {uploadBusy ? 'Reading…' : 'Send'}
+                      {uploadBusy ? <><span className="send-spinner" aria-hidden="true" />Reading with AI…</> : 'Send'}
                     </button>
                   </form>
 
