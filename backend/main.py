@@ -9,14 +9,15 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
+import ai_tutor
 import auth
 import database
 import questions
 
 app = FastAPI(
     title="bindit API",
-    version="0.5.0",
-    description="Practice, accounts, profiles, and secure progress tracking.",
+    version="0.6.0",
+    description="Practice, accounts, profiles, secure progress tracking, and AI tutoring.",
 )
 
 app.add_middleware(
@@ -44,9 +45,12 @@ class AnswerRequest(BaseModel):
 
 class AnswerResponse(BaseModel):
     correct: bool
+    score: int = Field(ge=0, le=100)
     mistake_type: str | None
+    misconception: str | None = None
     explanation: str
     hint: str | None
+    grading_source: Literal["deterministic", "ai", "fallback"]
     xp_earned: int
     total_xp: int
     streak: int
@@ -400,17 +404,52 @@ def analyze_answer(data: AnswerRequest, authorization: Annotated[str | None, Hea
     if question["completed"]:
         raise HTTPException(status_code=409, detail="Question already completed")
 
-    correct = answers_match(data.student_answer, question["correct_answer"])
-    mistake_type = None if correct else classify_mistake(data.student_answer, question["correct_answer"])
+    exact_match = answers_match(data.student_answer, question["correct_answer"])
+    if exact_match:
+        correct = True
+        score = 100
+        mistake_type = None
+        misconception = None
+        explanation = "Correct! Great work."
+        hint = None
+        grading_source: Literal["deterministic", "ai", "fallback"] = "deterministic"
+    else:
+        try:
+            ai_result = ai_tutor.grade_answer(
+                question=question["question"],
+                correct_answer=question["correct_answer"],
+                student_answer=data.student_answer,
+                topic=question["topic"],
+                difficulty=question["difficulty"],
+            )
+            correct = ai_result["correct"]
+            score = ai_result["score"]
+            mistake_type = ai_result["mistake_type"]
+            misconception = ai_result["misconception"]
+            explanation = ai_result["explanation"]
+            hint = ai_result["hint"]
+            grading_source = "ai"
+        except ai_tutor.AITutorError:
+            correct = False
+            score = 0
+            mistake_type = classify_mistake(data.student_answer, question["correct_answer"])
+            misconception = None
+            explanation = "That answer is not correct yet. Use the hint and try again."
+            hint = make_hint(question["question"], mistake_type)
+            grading_source = "fallback"
+
     xp = 10 if correct else 0
     if correct and not questions.complete_question(student_id, data.question_id):
         raise HTTPException(status_code=409, detail="Question already completed")
     record = database.update_progress(student_id, question["topic"], correct, xp)
     return AnswerResponse(
         correct=correct,
+        score=score,
         mistake_type=mistake_type,
-        explanation="Correct! Great work." if correct else "That answer is not correct yet. Use the hint and try again.",
-        hint=None if correct else make_hint(question["question"], mistake_type),
+        misconception=misconception,
+        explanation=explanation,
+        hint=hint,
+        grading_source=grading_source,
         xp_earned=xp,
         total_xp=record["total_xp"],
         streak=record["streak"],
