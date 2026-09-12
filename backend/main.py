@@ -16,8 +16,8 @@ import questions
 
 app = FastAPI(
     title="bindit API",
-    version="0.7.0",
-    description="Practice, accounts, profiles, secure progress tracking, personalized quizzes, and AI tutoring.",
+    version="0.8.0",
+    description="Practice, accounts, profiles, secure progress tracking, personalized quizzes, AI flashcards, and AI tutoring.",
 )
 
 app.add_middleware(
@@ -83,6 +83,27 @@ class QuestionResponse(BaseModel):
     question: str
     topic: str
     difficulty: int
+
+
+class FlashcardRequest(BaseModel):
+    student_id: str = Field(default="anonymous", min_length=1, max_length=100)
+    course: str = Field(default="", max_length=120)
+    unit: str = Field(default="", max_length=160)
+    files: list[str] = Field(default_factory=list, max_length=30)
+    count: int = Field(default=10, ge=3, le=30)
+
+
+class Flashcard(BaseModel):
+    front: str
+    back: str
+    topic: str
+
+
+class FlashcardResponse(BaseModel):
+    course: str
+    unit: str
+    personalized: bool
+    cards: list[Flashcard]
 
 
 class TopicStat(BaseModel):
@@ -436,6 +457,36 @@ def generate_question(data: QuestionRequest, authorization: Annotated[str | None
         question=generated.question,
         topic=generated.topic,
         difficulty=generated.difficulty,
+    )
+
+
+@app.post("/api/generate-flashcards", response_model=FlashcardResponse)
+def generate_flashcards(data: FlashcardRequest, authorization: Annotated[str | None, Header()] = None):
+    student_id = verified_student_id(data.student_id, authorization)
+    course = data.course.strip()
+    unit = data.unit.strip()
+    if not course and not unit:
+        raise HTTPException(status_code=400, detail="Choose a course or unit before generating flashcards")
+
+    target_topic = unit or course
+    _, personalization = quiz_personalization(student_id, 2, target_topic)
+    try:
+        cards = ai_tutor.generate_flashcards(
+            course=course,
+            unit=unit,
+            source_labels=[name.strip() for name in data.files if name.strip()],
+            count=data.count,
+            personalization=personalization,
+        )
+    except ai_tutor.AITutorError as exc:
+        raise HTTPException(status_code=503, detail="AI flashcard generation is temporarily unavailable. Try again in a moment.") from exc
+
+    personalized = bool(personalization.get("overall_attempts", 0))
+    return FlashcardResponse(
+        course=course,
+        unit=unit,
+        personalized=personalized,
+        cards=[Flashcard(**card) for card in cards],
     )
 
 
