@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { CSSProperties, FormEvent } from 'react'
-import { analyzeAnswer, generateQuestion, uploadNote, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
+import type { CSSProperties, DragEvent, FormEvent } from 'react'
+import { analyzeAnswer, deleteNote, generateFlashcards, generateQuestion, uploadNote, type AnswerResult, type Flashcard, type GeneratedQuestion, type Topic } from '../lib/api'
 import { recordUnitAttempt } from '../lib/progress'
 import {
   fileToCourseImageDataUrl,
@@ -15,6 +15,7 @@ import {
 import type { Course, NoteDeposit } from '../lib/types'
 import './Home.css'
 import './ToolsMotion.css'
+import './ToolsWorkspace.css'
 
 const QUIZ_TOPICS: { id: Topic; label: string }[] = [
   { id: 'mixed', label: 'Mixed' },
@@ -164,6 +165,9 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   const [renamingCourse, setRenamingCourse] = useState('')
   const [courseRenameDraft, setCourseRenameDraft] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [pastedNotes, setPastedNotes] = useState('')
+  const [dragActive, setDragActive] = useState(false)
+  const [removingNoteId, setRemovingNoteId] = useState('')
   const [notice, setNotice] = useState('')
   const [uploadBusy, setUploadBusy] = useState(false)
   const [cardIndex, setCardIndex] = useState(0)
@@ -185,6 +189,9 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   const [quizResult, setQuizResult] = useState<AnswerResult | null>(null)
   const [quizBusy, setQuizBusy] = useState(false)
   const [quizError, setQuizError] = useState('')
+  const [generatedCards, setGeneratedCards] = useState<Flashcard[]>([])
+  const [cardsBusy, setCardsBusy] = useState(false)
+  const [cardsError, setCardsError] = useState('')
   const [panelFn, setPanelFn] = useState<'scan' | 'cards' | 'quiz'>('scan')
   const [quizMenu, setQuizMenu] = useState<'topic' | 'level' | null>(null)
   const [orderOpen, setOrderOpen] = useState(false)
@@ -206,11 +213,12 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   const activeTone = courseTone(courses.find((course) => course.name === activeCourse) ?? { name: activeCourse })
   const looking = courses.find((course) => course.name === lookCourse) ?? courses.find((course) => course.name === activeCourse)
   const unitNotes = notesFor(notebook.deposits, activeCourse, activeUnit)
-  const deck =
+  const fallbackDeck =
     unitNotes.length > 0
       ? unitNotes.map((note) => ({
           front: note.fileName,
           back: `Notes saved in ${activeCourse} → ${activeUnit}. Real quiz cards will be generated from this file later.`,
+          topic: activeUnit || activeCourse,
         }))
       : [
           {
@@ -218,16 +226,20 @@ export function Tools({ accessToken }: { accessToken?: string }) {
             back: activeUnit
               ? 'Upload notes on the scan screen, then come back here.'
               : 'Choose or create a unit tab, then scroll back to flashcards.',
+            topic: activeUnit || 'Getting started',
           },
           {
             front: 'How do I study?',
             back: 'Scan notes above, then flip through cards for this unit.',
+            topic: 'Study flow',
           },
           {
             front: 'Ready to quiz?',
             back: 'Hit Next to swipe this card away and bring the next one forward.',
+            topic: 'Practice',
           },
         ]
+  const deck = generatedCards.length > 0 ? generatedCards : fallbackDeck
 
   useEffect(() => {
     setCardIndex(0)
@@ -235,6 +247,28 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     setSwipe('idle')
     swipeLock.current = false
   }, [activeCourse, activeUnit, unitNotes.length])
+
+  useEffect(() => {
+    if (panelFn !== 'cards' || !activeCourse || !activeUnit || unitNotes.length === 0) {
+      setGeneratedCards([])
+      setCardsError('')
+      return
+    }
+    let current = true
+    setCardsBusy(true)
+    setCardsError('')
+    void generateFlashcards({ course: activeCourse, unit: activeUnit, count: 10 }, accessToken)
+      .then((result) => {
+        if (current) setGeneratedCards(result.cards)
+      })
+      .catch(() => {
+        if (current) setCardsError('Could not generate cards yet. Try again in a moment.')
+      })
+      .finally(() => {
+        if (current) setCardsBusy(false)
+      })
+    return () => { current = false }
+  }, [accessToken, activeCourse, activeUnit, panelFn, unitNotes.length])
 
   useEffect(() => {
     if (swipe === 'idle') return
@@ -575,6 +609,15 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     setNotice(next ? `Ready: ${next.name}` : '')
   }
 
+  function onDropFile(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setDragActive(false)
+    const next = event.dataTransfer.files?.[0]
+    if (!next) return
+    setFile(next)
+    setNotice(`Ready: ${next.name}`)
+  }
+
   function finishSwipe(direction: 'next' | 'prev') {
     if (swipeLock.current) return
     swipeLock.current = true
@@ -647,18 +690,31 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   async function sendUpload(event: FormEvent) {
     event.preventDefault()
     if (!file || uploadBusy) return
+    await ingestNote(file)
+  }
+
+  async function sendPastedNotes(event: FormEvent) {
+    event.preventDefault()
+    const text = pastedNotes.trim()
+    if (!text || uploadBusy) return
+    const typedNote = new File([text], `typed-notes-${new Date().toISOString().slice(0, 10)}.txt`, { type: 'text/plain' })
+    const saved = await ingestNote(typedNote)
+    if (saved) setPastedNotes('')
+  }
+
+  async function ingestNote(candidate: File): Promise<boolean> {
     if (!activeUnit) {
       setNotice(`Create a unit in ${activeCourse} first, then send your notes there.`)
-      return
+      return false
     }
-    if (file.size > 10 * 1024 * 1024) {
+    if (candidate.size > 10 * 1024 * 1024) {
       setNotice('Notes must be 10 MB or smaller.')
-      return
+      return false
     }
     setUploadBusy(true)
-    setNotice(`Reading “${file.name}”…`)
+    setNotice(`Reading “${candidate.name}”…`)
     try {
-      const uploaded = await uploadNote(file, activeCourse, activeUnit, accessToken)
+      const uploaded = await uploadNote(candidate, activeCourse, activeUnit, accessToken)
       const deposit: NoteDeposit = {
         id: uploaded.id,
         course: uploaded.course,
@@ -666,15 +722,32 @@ export function Tools({ accessToken }: { accessToken?: string }) {
         fileName: uploaded.file_name,
         createdAt: uploaded.created_at,
         status: uploaded.status,
+        textPreview: uploaded.text_preview,
       }
       setNotebook((current) => ({ ...current, deposits: [deposit, ...current.deposits.filter((note) => note.id !== deposit.id)] }))
       setFile(null)
       if (fileInput.current) fileInput.current.value = ''
       setNotice(`Ready: “${deposit.fileName}” is grounded for ${activeCourse} → ${activeUnit}.`)
+      return true
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not read that note.')
+      return false
     } finally {
       setUploadBusy(false)
+    }
+  }
+
+  async function removeNote(note: NoteDeposit) {
+    if (removingNoteId) return
+    setRemovingNoteId(note.id)
+    try {
+      await deleteNote(note.id, accessToken)
+      setNotebook((current) => ({ ...current, deposits: current.deposits.filter((item) => item.id !== note.id) }))
+      setNotice(`Removed “${note.fileName}”.`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not remove that note.')
+    } finally {
+      setRemovingNoteId('')
     }
   }
 
@@ -1154,8 +1227,17 @@ export function Tools({ accessToken }: { accessToken?: string }) {
               <div className="panel-pages" ref={pagesRef}>
                 <section className="panel-page panel-page--scan" aria-label="Scan and notes">
                   <form className={`scan${uploadBusy ? ' is-reading' : ''}`} onSubmit={sendUpload} aria-busy={uploadBusy}>
-                    <div className="scan__stage">
-                      <span className="scan__label">Camera / upload</span>
+                    <div
+                      className={`scan__stage${dragActive ? ' is-dragging' : ''}`}
+                      onDragEnter={(event) => { event.preventDefault(); setDragActive(true) }}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDragLeave={(event) => {
+                        const nextTarget = event.relatedTarget
+                        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) setDragActive(false)
+                      }}
+                      onDrop={onDropFile}
+                    >
+                      <span className="scan__label">Add notes</span>
                       <span className="tab" aria-hidden="true" />
                       <input
                         ref={fileInput}
@@ -1166,8 +1248,8 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                       />
                       <button className="frame" type="button" onClick={() => fileInput.current?.click()}>
                         <CameraMark />
-                        <strong>Scan / upload file</strong>
-                        {file ? <small>{file.name}</small> : null}
+                        <strong>{file ? file.name : 'Drop a file or browse'}</strong>
+                        <small>{file ? 'Ready to add' : 'PDF, DOCX, text, or a photo of handwriting · 10 MB max'}</small>
                         {uploadBusy ? <span className="scan-progress" role="status"><i /><i /><i /><b>Optimizing and reading your notes</b></span> : null}
                       </button>
                     </div>
@@ -1176,8 +1258,14 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                     </button>
                   </form>
 
-                  <section className="requests">
-                    <h2>{activeUnit ? `${activeUnit} notes` : 'Requests'}</h2>
+                  <section className="requests notes-workspace">
+                    <div className="notes-heading"><div><span>UNIT SOURCES</span><h2>{activeUnit ? `${activeUnit} notes` : 'Your notes'}</h2></div><small>{unitNotes.length} source{unitNotes.length === 1 ? '' : 's'}</small></div>
+                    <p className="notes-explanation">Everything here becomes the source material for your flashcards and quiz questions. Photos of clear handwriting are read automatically.</p>
+                    <form className="paste-notes" onSubmit={sendPastedNotes}>
+                      <label htmlFor="pasted-notes">Paste or type notes</label>
+                      <textarea id="pasted-notes" value={pastedNotes} onChange={(event) => setPastedNotes(event.target.value)} placeholder="Paste from Google Docs, a class handout, or your own typed notes…" rows={4} />
+                      <button type="submit" disabled={!pastedNotes.trim() || uploadBusy || !activeUnit}>Add typed notes</button>
+                    </form>
                     {activeUnit && unitNotes.length === 0 ? (
                       <p>Nothing deposited here yet.</p>
                     ) : null}
@@ -1192,7 +1280,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                     {unitNotes.length > 0 ? (
                       <ul>
                         {unitNotes.map((note) => (
-                          <li key={note.id}>{note.fileName}</li>
+                          <li key={note.id} className="note-source"><div><strong>{note.fileName}</strong><small>{note.textPreview || 'Ready for grounded flashcards and quizzes.'}</small></div><button type="button" onClick={() => void removeNote(note)} disabled={removingNoteId === note.id} aria-label={`Remove ${note.fileName}`}>{removingNoteId === note.id ? 'Removing…' : 'Remove'}</button></li>
                         ))}
                       </ul>
                     ) : null}
@@ -1203,6 +1291,9 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                   <div className="flash">
                     <p className="flash__kicker">Function 2</p>
                     <h2>{activeUnit ? `${activeUnit} flashcards` : 'Flashcards'}</h2>
+                    <p className="flash__intro">Built from the note sources in this unit. Tap the card to reveal the explanation.</p>
+                    {cardsBusy ? <div className="cards-loading" role="status"><span /><span /><span />Building your cards from the notes…</div> : null}
+                    {cardsError ? <p className="cards-error">{cardsError}</p> : null}
                     <div className={`flash-stack is-${swipe}`} aria-live="polite">
                       {deck.length > 1 ? (
                         <article
@@ -1235,6 +1326,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                               finishSwipe(swipe)
                             }}
                           >
+                            <em className="flash-topic">{card.topic}</em>
                             <strong>
                               {isFront && cardFlipped ? card.back : card.front}
                             </strong>

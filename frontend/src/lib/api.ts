@@ -143,6 +143,10 @@ export async function uploadNote(file: File, course: string, unit: string, acces
   return request<UploadedNote>('/api/notes', { method: 'POST', body: form }, accessToken)
 }
 
+export function deleteNote(noteId: string, accessToken?: string) {
+  return request<{ deleted: boolean }>(`/api/notes/${encodeURIComponent(noteId)}`, { method: 'DELETE' }, accessToken)
+}
+
 export function generateQuestion(topic: Topic, difficulty: number, notes?: NoteQuizContext) {
   return request<GeneratedQuestion>('/api/generate-question', {
     method: 'POST',

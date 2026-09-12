@@ -19,7 +19,7 @@ import note_store
 
 app = FastAPI(
     title="bindet API",
-    version="1.0.0",
+    version="1.1.0",
     description="Practice, accounts, profiles, secure progress tracking, personalized quizzes, AI flashcards, and AI tutoring.",
 )
 
@@ -465,6 +465,14 @@ def get_note(note_id: str, authorization: Annotated[str | None, Header()] = None
     if row is None:
         raise HTTPException(status_code=404, detail="Note not found")
     return note_response(row)
+
+
+@app.delete("/api/notes/{note_id}")
+def delete_note(note_id: str, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    if not note_store.remove_note(user["id"], note_id):
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"deleted": True}
 
 
 @app.get("/api/auth/me", response_model=AccountResponse)
