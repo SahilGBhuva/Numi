@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, delete, select, update
@@ -31,6 +31,14 @@ def save_question(student_id: str, question: str, correct_answer: str, topic: st
     init_questions()
     question_id = uuid4().hex
     with database.engine().begin() as connection:
+        connection.execute(delete(generated_questions).where(
+            generated_questions.c.created_at < datetime.now(timezone.utc) - timedelta(days=7)
+        ))
+        older_ids = connection.execute(select(generated_questions.c.question_id).where(
+            generated_questions.c.student_id == student_id
+        ).order_by(generated_questions.c.created_at.desc()).offset(49)).scalars().all()
+        if older_ids:
+            connection.execute(delete(generated_questions).where(generated_questions.c.question_id.in_(older_ids)))
         connection.execute(generated_questions.insert().values(
             question_id=question_id,
             student_id=student_id,

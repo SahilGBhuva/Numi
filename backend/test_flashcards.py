@@ -26,7 +26,7 @@ class BinditFlashcardTests(unittest.TestCase):
             {'front': 'What is an adaptation?', 'back': 'A heritable trait that increases reproductive success in an environment.', 'topic': 'Natural Selection'},
             {'front': 'Why does variation matter?', 'back': 'Selection can only act when individuals differ in heritable traits.', 'topic': 'Natural Selection'},
         ]
-        with patch.object(main.ai_tutor, 'generate_flashcards', return_value=cards) as mocked:
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-1'}), patch.object(main.ai_tutor, 'generate_flashcards', return_value=cards) as mocked:
             result = main.generate_flashcards(
                 main.FlashcardRequest(
                     student_id='student-1',
@@ -34,7 +34,7 @@ class BinditFlashcardTests(unittest.TestCase):
                     unit='Natural Selection',
                     files=['evolution-notes.pdf'],
                     count=3,
-                )
+                ), 'Bearer test'
             )
         self.assertEqual(result.course, 'Biology')
         self.assertEqual(result.unit, 'Natural Selection')
@@ -50,19 +50,19 @@ class BinditFlashcardTests(unittest.TestCase):
             {'front': 'What is ATP?', 'back': 'The cell’s main immediate energy-carrying molecule.', 'topic': 'Cell Biology'},
             {'front': 'Where does glycolysis occur?', 'back': 'In the cytosol.', 'topic': 'Cell Biology'},
         ]
-        with patch.object(main.ai_tutor, 'generate_flashcards', return_value=cards) as mocked:
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-1'}), patch.object(main.ai_tutor, 'generate_flashcards', return_value=cards) as mocked:
             result = main.generate_flashcards(
-                main.FlashcardRequest(student_id='student-1', course='Biology', unit='Cell Biology', count=3)
+                main.FlashcardRequest(student_id='student-1', course='Biology', unit='Cell Biology', count=3), 'Bearer test'
             )
         personalization = mocked.call_args.kwargs['personalization']
         self.assertIn('Cell Biology', personalization['weak_topics'])
         self.assertTrue(result.personalized)
 
     def test_flashcard_ai_failure_returns_service_error(self):
-        with patch.object(main.ai_tutor, 'generate_flashcards', side_effect=main.ai_tutor.AITutorError('offline')):
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-1'}), patch.object(main.ai_tutor, 'generate_flashcards', side_effect=main.ai_tutor.AITutorError('offline')):
             with self.assertRaises(main.HTTPException) as context:
                 main.generate_flashcards(
-                    main.FlashcardRequest(student_id='student-1', course='History', unit='Industrial Revolution')
+                    main.FlashcardRequest(student_id='student-1', course='History', unit='Industrial Revolution'), 'Bearer test'
                 )
         self.assertEqual(context.exception.status_code, 503)
 

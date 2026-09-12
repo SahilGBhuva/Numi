@@ -102,9 +102,9 @@ class BinditBackendTests(unittest.TestCase):
             'explanation': 'Your setup is close, but 2 + 2 equals 4.',
             'hint': 'Count two more from 2.',
         }
-        with patch.object(main.ai_tutor, 'grade_answer', return_value=ai_result):
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'guest-1'}), patch.object(main.ai_tutor, 'grade_answer', return_value=ai_result):
             result = main.analyze_answer(
-                main.AnswerRequest(question_id=question_id, student_answer='5', student_id='guest-1')
+                main.AnswerRequest(question_id=question_id, student_answer='5', student_id='guest-1'), 'Bearer test'
             )
         self.assertFalse(result.correct)
         self.assertEqual(result.score, 50)
@@ -164,7 +164,7 @@ class BinditBackendTests(unittest.TestCase):
         self.assertEqual(progress['total_xp'], 10)
         self.assertEqual(progress['attempts'], 1)
 
-    def test_guest_progress_is_claimed_once_by_account(self):
+    def test_unverified_guest_progress_is_not_claimed_by_account(self):
         main.database.update_progress('guest-1', 'addition', True, 10)
         main.database.update_progress('guest-1', 'addition', False, 0)
         profile = main.database.onboard_account('account-1', 'bindit_learner', 'bindit Learner', 'guest-1')
@@ -173,8 +173,8 @@ class BinditBackendTests(unittest.TestCase):
         second = main.database.get_progress('account-1')
         self.assertEqual(profile['username'], 'bindit_learner')
         self.assertTrue(profile['friend_code'])
-        self.assertEqual(first['total_xp'], 10)
-        self.assertEqual(first['attempts'], 2)
+        self.assertEqual(first['total_xp'], 0)
+        self.assertEqual(first['attempts'], 0)
         self.assertEqual(first, second)
 
     def test_guest_progress_cannot_be_stolen_from_existing_account(self):

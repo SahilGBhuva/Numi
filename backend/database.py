@@ -9,8 +9,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import (
-    Column, Date, DateTime, ForeignKey, Integer, MetaData, String, Table,
-    UniqueConstraint, and_, create_engine, delete, inspect, or_, select, update,
+    Boolean, Column, Date, DateTime, ForeignKey, Integer, MetaData, String, Table, Text,
+    UniqueConstraint, and_, create_engine, delete, func, inspect, or_, select, update,
 )
 from sqlalchemy.engine import Engine
 
@@ -52,6 +52,8 @@ profiles = Table(
     Column("avatar_path", String(500), nullable=False, default=""),
     Column("friend_code", String(12), nullable=False, unique=True),
     Column("daily_goal", Integer, nullable=False, default=20),
+    Column("discoverable", Boolean, nullable=False, default=True),
+    Column("allow_friend_requests", Boolean, nullable=False, default=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
@@ -76,6 +78,62 @@ friend_quests = Table(
     Column("status", String(12), nullable=False, default="active"),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("expires_at", DateTime(timezone=True), nullable=False),
+)
+
+xp_events = Table(
+    "xp_events", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("student_id", String(100), ForeignKey("student_progress.student_id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("xp", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, index=True),
+)
+
+social_reactions = Table(
+    "social_reactions", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("event_id", Integer, ForeignKey("xp_events.id", ondelete="CASCADE"), nullable=False),
+    Column("reactor_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("reaction", String(16), nullable=False, default="high_five"),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("event_id", "reactor_id", name="uq_social_event_reactor"),
+)
+
+social_notifications = Table(
+    "social_notifications", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("recipient_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("actor_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE")),
+    Column("kind", String(24), nullable=False),
+    Column("message", String(240), nullable=False),
+    Column("is_read", Boolean, nullable=False, default=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+social_blocks = Table(
+    "social_blocks", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("blocker_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("blocked_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("blocker_id", "blocked_id", name="uq_social_block"),
+)
+
+social_reports = Table(
+    "social_reports", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("reporter_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("reported_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("reason", String(40), nullable=False),
+    Column("details", Text, nullable=False, default=""),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+social_action_events = Table(
+    "social_action_events", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("student_id", String(100), nullable=False, index=True),
+    Column("action", String(24), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, index=True),
 )
 
 uploaded_images = Table(
@@ -171,6 +229,8 @@ def init_db() -> None:
             connection.exec_driver_sql("ALTER TABLE progress_claims ENABLE ROW LEVEL SECURITY")
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_path varchar(500) NOT NULL DEFAULT ''")
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS daily_goal integer NOT NULL DEFAULT 20")
+            connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS discoverable boolean NOT NULL DEFAULT true")
+            connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS allow_friend_requests boolean NOT NULL DEFAULT true")
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT timezone('utc', now())")
             connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN IF NOT EXISTS login_streak integer NOT NULL DEFAULT 0")
             connection.exec_driver_sql("ALTER TABLE student_progress ADD COLUMN IF NOT EXISTS best_login_streak integer NOT NULL DEFAULT 0")
@@ -198,6 +258,10 @@ def init_db() -> None:
             if "updated_at" not in profile_columns:
                 connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN updated_at DATETIME")
                 connection.execute(update(profiles).values(updated_at=datetime.now(timezone.utc)))
+            if "discoverable" not in profile_columns:
+                connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN discoverable BOOLEAN NOT NULL DEFAULT 1")
+            if "allow_friend_requests" not in profile_columns:
+                connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN allow_friend_requests BOOLEAN NOT NULL DEFAULT 1")
 
 
 def _next_streak(current_streak: int, last_active: date | None, correct: bool, today: date) -> int:
@@ -214,6 +278,26 @@ def _next_login_streak(current_streak: int, last_login: date | None, today: date
     if last_login == today - timedelta(days=1):
         return current_streak + 1
     return 1
+
+
+def check_social_rate_limit(student_id: str, action: str, limit: int, window_minutes: int = 60) -> None:
+    """Use shared storage so limits still hold across serverless instances."""
+    init_db()
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    with engine().begin() as connection:
+        connection.execute(delete(social_action_events).where(
+            social_action_events.c.created_at < datetime.now(timezone.utc) - timedelta(days=7)
+        ))
+        count = connection.execute(select(func.count()).select_from(social_action_events).where(
+            social_action_events.c.student_id == student_id,
+            social_action_events.c.action == action,
+            social_action_events.c.created_at >= cutoff,
+        )).scalar_one()
+        if count >= limit:
+            raise ValueError("social_rate_limited")
+        connection.execute(social_action_events.insert().values(
+            student_id=student_id, action=action, created_at=datetime.now(timezone.utc),
+        ))
 
 
 def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict:
@@ -280,6 +364,8 @@ def update_progress(student_id: str, topic: str, correct: bool, xp: int) -> dict
         topics = connection.execute(
             select(topic_progress).where(topic_progress.c.student_id == student_id)
         ).mappings().all()
+        if xp > 0:
+            connection.execute(xp_events.insert().values(student_id=student_id, xp=xp, created_at=now))
 
     return {
         "student_id": updated["student_id"],
@@ -465,6 +551,8 @@ def get_profile(student_id: str) -> dict | None:
         "avatar_path": row["avatar_path"] or "",
         "friend_code": row["friend_code"],
         "daily_goal": row["daily_goal"] or 20,
+        "discoverable": bool(row["discoverable"]),
+        "allow_friend_requests": bool(row["allow_friend_requests"]),
         "total_xp": row["total_xp"],
         "streak": row["streak"],
         "best_streak": row["best_streak"],
@@ -484,7 +572,10 @@ def onboard_account(
     avatar_path: str | None = None,
     daily_goal: int | None = None,
 ) -> dict:
-    """Create/update an account profile and claim one guest history exactly once."""
+    """Create/update an account profile without trusting browser-supplied guest ownership."""
+    # Guest IDs are browser-generated identifiers, not ownership credentials.
+    # Keep guest history isolated until a signed migration flow is available.
+    guest_id = None
     init_db()
     now = datetime.now(timezone.utc)
     if daily_goal is not None and daily_goal not in DAILY_GOALS:
@@ -595,8 +686,15 @@ def send_friend_request(requester_id: str, friend_code: str) -> dict:
         recipient_id = recipient["student_id"]
         if requester_id == recipient_id:
             raise ValueError("cannot_friend_self")
+        if not recipient["allow_friend_requests"]:
+            raise ValueError("friend_requests_disabled")
         if not connection.execute(select(profiles).where(profiles.c.student_id == requester_id)).first():
             raise ValueError("profile_not_found")
+        if connection.execute(select(social_blocks.c.id).where(or_(
+            and_(social_blocks.c.blocker_id == requester_id, social_blocks.c.blocked_id == recipient_id),
+            and_(social_blocks.c.blocker_id == recipient_id, social_blocks.c.blocked_id == requester_id),
+        ))).first():
+            raise ValueError("friend_not_found")
         existing = connection.execute(select(friendships).where(or_(
             and_(friendships.c.requester_id == requester_id, friendships.c.recipient_id == recipient_id),
             and_(friendships.c.requester_id == recipient_id, friendships.c.recipient_id == requester_id),
@@ -608,6 +706,12 @@ def send_friend_request(requester_id: str, friend_code: str) -> dict:
             status="pending", created_at=datetime.now(timezone.utc),
         ))
         request_id = result.inserted_primary_key[0]
+        requester_name = connection.execute(select(profiles.c.display_name).where(profiles.c.student_id == requester_id)).scalar_one()
+        connection.execute(social_notifications.insert().values(
+            recipient_id=recipient_id, actor_id=requester_id, kind="friend_request",
+            message=f"{requester_name} sent you a friend request.", is_read=False,
+            created_at=datetime.now(timezone.utc),
+        ))
     return {"request_id": request_id, "status": "pending", "friend": dict(recipient)}
 
 
@@ -624,6 +728,13 @@ def respond_to_friend_request(request_id: int, recipient_id: str, accept: bool) 
             raise ValueError("request_already_answered")
         status = "accepted" if accept else "declined"
         connection.execute(update(friendships).where(friendships.c.id == request_id).values(status=status))
+        if accept:
+            recipient_name = connection.execute(select(profiles.c.display_name).where(profiles.c.student_id == recipient_id)).scalar_one()
+            connection.execute(social_notifications.insert().values(
+                recipient_id=request["requester_id"], actor_id=recipient_id, kind="friend_accepted",
+                message=f"{recipient_name} accepted your friend request.", is_read=False,
+                created_at=datetime.now(timezone.utc),
+            ))
     return {"request_id": request_id, "status": status}
 
 
@@ -663,8 +774,31 @@ def list_friends(student_id: str) -> list[dict]:
             .where(profiles.c.student_id.in_(friend_ids))
             .order_by(profiles.c.display_name.asc())
         ).mappings().all()
+        week_start = datetime.combine(date.today() - timedelta(days=date.today().weekday()), datetime.min.time(), tzinfo=timezone.utc)
+        weekly = dict(connection.execute(select(xp_events.c.student_id, func.sum(xp_events.c.xp)).where(
+            xp_events.c.student_id.in_(friend_ids), xp_events.c.created_at >= week_start,
+        ).group_by(xp_events.c.student_id)).all())
     today = date.today()
-    return [{**dict(row), "active_today": row["last_active_date"] == today} for row in rows]
+    return [{**dict(row), "active_today": row["last_active_date"] == today,
+             "weekly_xp": weekly.get(row["student_id"], 0),
+             "friend_streak": _friend_streak(student_id, row["student_id"])} for row in rows]
+
+
+def _friend_streak(first_id: str, second_id: str) -> int:
+    with engine().connect() as connection:
+        rows = connection.execute(select(xp_events.c.student_id, xp_events.c.created_at).where(
+            xp_events.c.student_id.in_([first_id, second_id])
+        )).all()
+    active = {first_id: set(), second_id: set()}
+    for owner_id, created_at in rows:
+        active[owner_id].add(created_at.date())
+    shared = active[first_id] & active[second_id]
+    cursor = date.today() if date.today() in shared else date.today() - timedelta(days=1)
+    streak = 0
+    while cursor in shared:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
 
 
 def remove_friend(student_id: str, friend_id: str) -> bool:
@@ -750,24 +884,166 @@ def friend_leaderboard(student_id: str) -> list[dict]:
             for row in accepted
         }
         friend_ids.add(student_id)
+        week_start = datetime.combine(date.today() - timedelta(days=date.today().weekday()), datetime.min.time(), tzinfo=timezone.utc)
+        weekly_xp = select(xp_events.c.student_id, func.sum(xp_events.c.xp).label("weekly_xp")).where(
+            xp_events.c.created_at >= week_start
+        ).group_by(xp_events.c.student_id).subquery()
         rows = connection.execute(
             select(
                 profiles.c.student_id, profiles.c.username, profiles.c.display_name,
                 student_progress.c.total_xp, student_progress.c.streak,
-                student_progress.c.last_active_date,
+                student_progress.c.last_active_date, func.coalesce(weekly_xp.c.weekly_xp, 0).label("weekly_xp"),
             ).join(student_progress, profiles.c.student_id == student_progress.c.student_id)
+            .outerjoin(weekly_xp, profiles.c.student_id == weekly_xp.c.student_id)
             .where(profiles.c.student_id.in_(friend_ids))
-            .order_by(student_progress.c.total_xp.desc(), profiles.c.username.asc())
+            .order_by(func.coalesce(weekly_xp.c.weekly_xp, 0).desc(), profiles.c.username.asc())
         ).mappings().all()
     today = date.today()
     return [
         {
             "student_id": row["student_id"], "username": row["username"],
             "display_name": row["display_name"], "total_xp": row["total_xp"],
+            "weekly_xp": row["weekly_xp"],
             "streak": row["streak"], "active_today": row["last_active_date"] == today,
         }
         for row in rows
     ]
+
+
+def _excluded_social_ids(connection, student_id: str) -> set[str]:
+    excluded = {student_id}
+    for row in connection.execute(select(friendships).where(or_(friendships.c.requester_id == student_id, friendships.c.recipient_id == student_id))).mappings():
+        excluded.add(row["recipient_id"] if row["requester_id"] == student_id else row["requester_id"])
+    for row in connection.execute(select(social_blocks).where(or_(social_blocks.c.blocker_id == student_id, social_blocks.c.blocked_id == student_id))).mappings():
+        excluded.add(row["blocked_id"] if row["blocker_id"] == student_id else row["blocker_id"])
+    return excluded
+
+
+def search_people(student_id: str, query: str) -> list[dict]:
+    init_db()
+    term = query.strip().lower()
+    if len(term) < 2:
+        return []
+    with engine().connect() as connection:
+        excluded = _excluded_social_ids(connection, student_id)
+        rows = connection.execute(select(
+            profiles.c.student_id, profiles.c.username, profiles.c.display_name,
+            profiles.c.avatar_path, profiles.c.friend_code,
+        ).where(
+            profiles.c.discoverable.is_(True), profiles.c.allow_friend_requests.is_(True),
+            profiles.c.student_id.not_in(excluded),
+            or_(func.lower(profiles.c.username).like(f"%{term}%"), func.lower(profiles.c.display_name).like(f"%{term}%")),
+        ).limit(12)).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def suggested_people(student_id: str) -> list[dict]:
+    init_db()
+    with engine().connect() as connection:
+        excluded = _excluded_social_ids(connection, student_id)
+        rows = connection.execute(select(
+            profiles.c.student_id, profiles.c.username, profiles.c.display_name,
+            profiles.c.avatar_path, profiles.c.friend_code,
+        ).where(
+            profiles.c.discoverable.is_(True), profiles.c.allow_friend_requests.is_(True),
+            profiles.c.student_id.not_in(excluded),
+        ).order_by(profiles.c.created_at.desc()).limit(6)).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def activity_feed(student_id: str) -> list[dict]:
+    init_db()
+    ids = [student_id] + [friend["student_id"] for friend in list_friends(student_id)]
+    with engine().connect() as connection:
+        rows = connection.execute(select(
+            xp_events.c.id, xp_events.c.student_id, xp_events.c.xp, xp_events.c.created_at,
+            profiles.c.display_name, profiles.c.username,
+        ).join(profiles, profiles.c.student_id == xp_events.c.student_id).where(
+            xp_events.c.student_id.in_(ids)
+        ).order_by(xp_events.c.created_at.desc()).limit(20)).mappings().all()
+        event_ids = [row["id"] for row in rows]
+        counts = dict(connection.execute(select(social_reactions.c.event_id, func.count().label("count")).where(
+            social_reactions.c.event_id.in_(event_ids)
+        ).group_by(social_reactions.c.event_id)).all()) if event_ids else {}
+        mine = set(connection.execute(select(social_reactions.c.event_id).where(
+            social_reactions.c.event_id.in_(event_ids), social_reactions.c.reactor_id == student_id,
+        )).scalars()) if event_ids else set()
+    return [{**dict(row), "reaction_count": counts.get(row["id"], 0), "reacted": row["id"] in mine} for row in rows]
+
+
+def react_to_activity(student_id: str, event_id: int) -> dict:
+    init_db()
+    visible = {student_id} | {friend["student_id"] for friend in list_friends(student_id)}
+    with engine().begin() as connection:
+        event = connection.execute(select(xp_events).where(xp_events.c.id == event_id, xp_events.c.student_id.in_(visible))).mappings().first()
+        if not event:
+            raise ValueError("activity_not_found")
+        existing = connection.execute(select(social_reactions).where(social_reactions.c.event_id == event_id, social_reactions.c.reactor_id == student_id)).first()
+        if existing:
+            connection.execute(delete(social_reactions).where(social_reactions.c.event_id == event_id, social_reactions.c.reactor_id == student_id))
+            return {"reacted": False}
+        connection.execute(social_reactions.insert().values(event_id=event_id, reactor_id=student_id, reaction="high_five", created_at=datetime.now(timezone.utc)))
+        if event["student_id"] != student_id:
+            name = connection.execute(select(profiles.c.display_name).where(profiles.c.student_id == student_id)).scalar_one()
+            connection.execute(social_notifications.insert().values(
+                recipient_id=event["student_id"], actor_id=student_id, kind="high_five",
+                message=f"{name} celebrated your study session.", is_read=False, created_at=datetime.now(timezone.utc),
+            ))
+    return {"reacted": True}
+
+
+def notifications_for(student_id: str) -> list[dict]:
+    init_db()
+    with engine().connect() as connection:
+        rows = connection.execute(select(social_notifications).where(
+            social_notifications.c.recipient_id == student_id
+        ).order_by(social_notifications.c.created_at.desc()).limit(30)).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def mark_notifications_read(student_id: str) -> None:
+    init_db()
+    with engine().begin() as connection:
+        connection.execute(update(social_notifications).where(social_notifications.c.recipient_id == student_id).values(is_read=True))
+
+
+def update_social_privacy(student_id: str, discoverable: bool, allow_friend_requests: bool) -> dict:
+    init_db()
+    with engine().begin() as connection:
+        result = connection.execute(update(profiles).where(profiles.c.student_id == student_id).values(
+            discoverable=discoverable, allow_friend_requests=allow_friend_requests,
+        ))
+        if not result.rowcount:
+            raise ValueError("profile_not_found")
+    return {"discoverable": discoverable, "allow_friend_requests": allow_friend_requests}
+
+
+def block_person(student_id: str, blocked_id: str) -> None:
+    init_db()
+    if student_id == blocked_id:
+        raise ValueError("cannot_block_self")
+    with engine().begin() as connection:
+        if not connection.execute(select(profiles.c.student_id).where(profiles.c.student_id == blocked_id)).first():
+            raise ValueError("friend_not_found")
+        connection.execute(delete(friendships).where(or_(
+            and_(friendships.c.requester_id == student_id, friendships.c.recipient_id == blocked_id),
+            and_(friendships.c.requester_id == blocked_id, friendships.c.recipient_id == student_id),
+        )))
+        if not connection.execute(select(social_blocks).where(social_blocks.c.blocker_id == student_id, social_blocks.c.blocked_id == blocked_id)).first():
+            connection.execute(social_blocks.insert().values(blocker_id=student_id, blocked_id=blocked_id, created_at=datetime.now(timezone.utc)))
+
+
+def report_person(student_id: str, reported_id: str, reason: str, details: str = "") -> dict:
+    init_db()
+    if student_id == reported_id:
+        raise ValueError("cannot_report_self")
+    with engine().begin() as connection:
+        if not connection.execute(select(profiles.c.student_id).where(profiles.c.student_id == reported_id)).first():
+            raise ValueError("friend_not_found")
+        result = connection.execute(social_reports.insert().values(
+            reporter_id=student_id, reported_id=reported_id, reason=reason, details=details[:1000], created_at=datetime.now(timezone.utc),
+        ))
+    return {"report_id": result.inserted_primary_key[0], "submitted": True}
 
 
 def reset_db() -> None:
@@ -777,6 +1053,12 @@ def reset_db() -> None:
         raise RuntimeError("reset_db is only available for local SQLite databases")
     with active_engine.begin() as connection:
         connection.execute(delete(uploaded_images))
+        connection.execute(delete(social_action_events))
+        connection.execute(delete(social_reports))
+        connection.execute(delete(social_notifications))
+        connection.execute(delete(social_reactions))
+        connection.execute(delete(social_blocks))
+        connection.execute(delete(xp_events))
         connection.execute(delete(friend_quests))
         connection.execute(delete(friendships))
         connection.execute(delete(profiles))

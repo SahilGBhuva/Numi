@@ -32,8 +32,8 @@ class PersonalizedQuizTests(unittest.TestCase):
             'correct_answer': 'It uses energy from electron transfers to pump protons across the inner mitochondrial membrane, storing potential energy for ATP synthase.',
             'topic': 'Cellular Respiration',
         }
-        with patch.object(main.ai_tutor, 'generate_question', return_value=generated) as mocked:
-            response = main.generate_question(request)
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'biology-student'}), patch.object(main.ai_tutor, 'generate_question', return_value=generated) as mocked:
+            response = main.generate_question(request, 'Bearer test')
 
         self.assertEqual(response.topic, 'Cellular Respiration')
         self.assertEqual(response.difficulty, 2)
@@ -61,8 +61,8 @@ class PersonalizedQuizTests(unittest.TestCase):
             'correct_answer': 'A positive discriminant gives two real roots, zero gives one repeated real root, and a negative discriminant gives no real roots.',
             'topic': 'Quadratic Functions',
         }
-        with patch.object(main.ai_tutor, 'generate_question', return_value=generated) as mocked:
-            response = main.generate_question(request)
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': student}), patch.object(main.ai_tutor, 'generate_question', return_value=generated) as mocked:
+            response = main.generate_question(request, 'Bearer test')
 
         self.assertEqual(response.difficulty, 3)
         kwargs = mocked.call_args.kwargs
@@ -85,8 +85,8 @@ class PersonalizedQuizTests(unittest.TestCase):
             'correct_answer': 'To use light energy to make chemical energy stored in glucose.',
             'topic': 'Photosynthesis',
         }
-        with patch.object(main.ai_tutor, 'generate_question', return_value=generated) as mocked:
-            response = main.generate_question(request)
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': student}), patch.object(main.ai_tutor, 'generate_question', return_value=generated) as mocked:
+            response = main.generate_question(request, 'Bearer test')
 
         self.assertEqual(response.difficulty, 1)
         self.assertIn('Photosynthesis', mocked.call_args.kwargs['personalization']['weak_topics'])
@@ -96,9 +96,9 @@ class PersonalizedQuizTests(unittest.TestCase):
             student_id='history-student',
             notes=main.NoteContext(course='World History', unit='Industrial Revolution'),
         )
-        with patch.object(main.ai_tutor, 'generate_question', side_effect=main.ai_tutor.AITutorError('offline')):
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'history-student'}), patch.object(main.ai_tutor, 'generate_question', side_effect=main.ai_tutor.AITutorError('offline')):
             with self.assertRaises(main.HTTPException) as context:
-                main.generate_question(request)
+                main.generate_question(request, 'Bearer test')
         self.assertEqual(context.exception.status_code, 503)
 
 

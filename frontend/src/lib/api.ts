@@ -61,6 +61,8 @@ export type Profile = {
   avatar_path: string
   friend_code: string
   daily_goal: number
+  discoverable: boolean
+  allow_friend_requests: boolean
   total_xp: number
   streak: number
   best_streak: number
@@ -75,10 +77,15 @@ export type Friend = {
   total_xp: number
   streak: number
   active_today: boolean
+  weekly_xp: number
+  friend_streak: number
 }
 export type FriendRequest = { request_id: number; username: string; display_name: string; created_at: string }
 export type FriendQuest = { id: number; friend_id: string; friend_name: string; target_xp: number; progress_xp: number; status: string; expires_at: string }
-export type FriendsHub = { friends: Friend[]; requests: FriendRequest[]; leaderboard: Friend[]; quests: FriendQuest[] }
+export type PersonSuggestion = { student_id: string; username: string; display_name: string; avatar_path: string; friend_code: string }
+export type SocialActivity = { id: number; student_id: string; username: string; display_name: string; xp: number; created_at: string; reaction_count: number; reacted: boolean }
+export type SocialNotification = { id: number; kind: string; message: string; is_read: boolean; created_at: string }
+export type FriendsHub = { friends: Friend[]; requests: FriendRequest[]; leaderboard: Friend[]; quests: FriendQuest[]; suggestions: PersonSuggestion[]; activity: SocialActivity[]; notifications: SocialNotification[] }
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -239,4 +246,32 @@ export function removeFriend(friendId: string, accessToken: string) {
 
 export function startFriendQuest(friendId: string, accessToken: string) {
   return request<FriendQuest>('/api/friend-quests', { method: 'POST', body: JSON.stringify({ friend_id: friendId, target_xp: 100 }) }, accessToken)
+}
+
+export function searchFriends(query: string, accessToken: string) {
+  return request<PersonSuggestion[]>(`/api/friends/search?q=${encodeURIComponent(query)}`, undefined, accessToken)
+}
+
+export function reactToActivity(eventId: number, accessToken: string) {
+  return request<{ reacted: boolean }>(`/api/social/activity/${eventId}/reaction`, { method: 'POST' }, accessToken)
+}
+
+export function readSocialNotifications(accessToken: string) {
+  return request<{ updated: boolean }>('/api/social/notifications/read', { method: 'POST' }, accessToken)
+}
+
+export function saveSocialPrivacy(discoverable: boolean, allowFriendRequests: boolean, accessToken: string) {
+  return request<{ discoverable: boolean; allow_friend_requests: boolean }>('/api/social/privacy', {
+    method: 'PUT', body: JSON.stringify({ discoverable, allow_friend_requests: allowFriendRequests }),
+  }, accessToken)
+}
+
+export function blockSocialUser(userId: string, accessToken: string) {
+  return request<{ blocked: boolean }>(`/api/social/blocks/${encodeURIComponent(userId)}`, { method: 'POST' }, accessToken)
+}
+
+export function reportSocialUser(userId: string, accessToken: string) {
+  return request<{ submitted: boolean }>('/api/social/reports', {
+    method: 'POST', body: JSON.stringify({ user_id: userId, reason: 'inappropriate_behavior', details: '' }),
+  }, accessToken)
 }

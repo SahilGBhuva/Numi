@@ -34,7 +34,7 @@ class NoteIngestionTests(unittest.TestCase):
     def test_pdf_uses_text_extraction(self):
         page = MagicMock()
         page.extract_text.return_value = "Newton's first law"
-        with patch.object(note_ingestion, "PdfReader", return_value=MagicMock(pages=[page])):
+        with patch.object(note_ingestion, "PdfReader", return_value=MagicMock(pages=[page], is_encrypted=False)):
             self.assertEqual(note_ingestion.extract_text("physics.pdf", b"fake-pdf"), "Newton's first law")
 
     def test_note_ownership_isolated(self):
@@ -77,8 +77,8 @@ class NoteIngestionTests(unittest.TestCase):
         note_store.save_note("student-a", "Biology", "Cells", "cells.txt", "text/plain", "Mitochondria generate ATP.", 25)
         request = main.QuestionRequest(student_id="student-a", notes=main.NoteContext(course="Biology", unit="Cells", files=["untrusted.txt"]))
         generated = {"question": "What generates ATP?", "correct_answer": "Mitochondria", "topic": "Cells"}
-        with patch.object(main.ai_tutor, "generate_question", return_value=generated) as ai:
-            main.generate_question(request)
+        with patch.object(main.auth, 'authenticated_user', return_value={'id': 'student-a'}), patch.object(main.ai_tutor, "generate_question", return_value=generated) as ai:
+            main.generate_question(request, 'Bearer test')
         kwargs = ai.call_args.kwargs
         self.assertIn("Mitochondria generate ATP", kwargs["source_text"])
         self.assertEqual(kwargs["source_labels"], ["cells.txt"])
