@@ -1,9 +1,28 @@
 import type { Course, Notebook, NoteDeposit, Session } from './types'
 
-const STORAGE_KEY = 'cac-study-session'
-const STUDENT_ID_KEY = 'numi-student-id'
-const NOTEBOOK_KEY = 'numi-notebook'
-const AVATAR_KEY = 'numi-avatar'
+const STORAGE_KEY = 'bindit-study-session'
+const STUDENT_ID_KEY = 'bindit-student-id'
+const NOTEBOOK_KEY = 'bindit-notebook'
+const AVATAR_KEY = 'bindit-avatar'
+
+const LEGACY_KEYS = {
+  session: 'cac-study-session',
+  studentId: 'numi-student-id',
+  notebook: 'numi-notebook',
+  avatar: 'numi-avatar',
+} as const
+
+function readMigrated(key: string, legacyKey: string): string | null {
+  const current = localStorage.getItem(key)
+  if (current !== null) return current
+
+  const legacy = localStorage.getItem(legacyKey)
+  if (legacy === null) return null
+
+  localStorage.setItem(key, legacy)
+  localStorage.removeItem(legacyKey)
+  return legacy
+}
 
 const emptyNotebook: Notebook = {
   courses: [{ name: 'Biology', units: [], tone: '#2a6ea8' }],
@@ -45,7 +64,7 @@ export function pickCourseTone(courses: Course[]): string {
 }
 
 export function getStudentId(): string {
-  const savedId = localStorage.getItem(STUDENT_ID_KEY)
+  const savedId = readMigrated(STUDENT_ID_KEY, LEGACY_KEYS.studentId)
   if (savedId) return savedId
 
   const studentId = crypto.randomUUID()
@@ -54,7 +73,7 @@ export function getStudentId(): string {
 }
 
 export function loadNotebook(): Notebook {
-  const raw = localStorage.getItem(NOTEBOOK_KEY)
+  const raw = readMigrated(NOTEBOOK_KEY, LEGACY_KEYS.notebook)
   if (!raw) return emptyNotebook
   try {
     const parsed = JSON.parse(raw) as Notebook
@@ -96,7 +115,7 @@ export function notesFor(deposits: NoteDeposit[], course: string, unit: string):
 }
 
 export function loadAvatar(): string {
-  return localStorage.getItem(AVATAR_KEY) ?? ''
+  return readMigrated(AVATAR_KEY, LEGACY_KEYS.avatar) ?? ''
 }
 
 export function saveAvatar(dataUrl: string): void {
@@ -149,7 +168,7 @@ export function saveSession(session: Session): void {
 }
 
 export function loadSession(): Session | null {
-  const raw = localStorage.getItem(STORAGE_KEY)
+  const raw = readMigrated(STORAGE_KEY, LEGACY_KEYS.session)
   if (!raw) return null
   try {
     return JSON.parse(raw) as Session
