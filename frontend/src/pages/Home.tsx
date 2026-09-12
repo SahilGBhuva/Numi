@@ -26,6 +26,10 @@ export function Home() {
   const [question, setQuestion] = useState<GeneratedQuestion | null>(null)
   const [answer, setAnswer] = useState('')
   const [result, setResult] = useState<AnswerResult | null>(null)
+  const [lessonAnswers, setLessonAnswers] = useState(0)
+  const [lessonCorrect, setLessonCorrect] = useState(0)
+  const [lessonXp, setLessonXp] = useState(0)
+  const [lessonComplete, setLessonComplete] = useState(false)
   const [progress, setProgress] = useState<Progress | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -74,6 +78,9 @@ export function Home() {
     try {
       const answerResult = await analyzeAnswer(question, answer, studentId, accessToken)
       setResult(answerResult)
+      setLessonAnswers((current) => current + 1)
+      setLessonCorrect((current) => current + Number(answerResult.correct))
+      setLessonXp((current) => current + answerResult.xp_earned)
       setProgress((current) => {
         const attempts = (current?.attempts ?? 0) + 1
         const correctAnswers = (current?.correct_answers ?? 0) + Number(answerResult.correct)
@@ -88,11 +95,15 @@ export function Home() {
     finally { setLoading(false) }
   }
 
-  function chooseTopic(next: Topic) { setTopic(next); void loadQuestion(next, difficulty, 1) }
-  function chooseDifficulty(next: number) { setDifficulty(next); void loadQuestion(topic, next, 1) }
+  function restartLesson(nextTopic = topic, nextDifficulty = difficulty) {
+    setLessonAnswers(0); setLessonCorrect(0); setLessonXp(0); setLessonComplete(false)
+    void loadQuestion(nextTopic, nextDifficulty, 1)
+  }
+  function chooseTopic(next: Topic) { setTopic(next); restartLesson(next, difficulty) }
+  function chooseDifficulty(next: number) { setDifficulty(next); restartLesson(topic, next) }
   function advanceQuestion() {
-    const nextQuestionNumber = questionNumber === QUESTIONS_PER_LESSON ? 1 : questionNumber + 1
-    void loadQuestion(topic, difficulty, nextQuestionNumber)
+    if (questionNumber === QUESTIONS_PER_LESSON) { setLessonComplete(true); return }
+    void loadQuestion(topic, difficulty, questionNumber + 1)
   }
   const xp = progress?.total_xp ?? result?.total_xp ?? 0
   const streak = progress?.streak ?? result?.streak ?? 0
@@ -123,10 +134,15 @@ export function Home() {
         <div className="lesson-top"><div><span className="lesson-label">{activeTopic.icon} {activeTopic.label}</span><span className="question-count">QUESTION {questionNumber} OF {QUESTIONS_PER_LESSON}</span></div><div className="difficulty">{[1,2,3].map((level) => <button key={level} className={difficulty === level ? 'active' : ''} onClick={() => chooseDifficulty(level)}>{level}</button>)}</div></div>
         <div className="progress-track"><span style={{ width: `${questionNumber / QUESTIONS_PER_LESSON * 100}%` }} /></div>
         <div className="question-area">
-          {error ? <div className="empty-state"><span>🔌</span><h3>Almost ready!</h3><p>{error}</p><button onClick={() => loadQuestion()}>Try again</button></div> : loading && !question ? <div className="loader">Thinking up a good one…</div> : <>
+          {lessonComplete ? <div className="lesson-results">
+            <img src="/bindit-otter-mascot.png" alt="Bindit otter celebrating" />
+            <span className="prompt-kicker">Lesson complete</span><h3>Binder closed. Brain upgraded.</h3>
+            <div className="result-metrics"><div><strong>+{lessonXp}</strong><small>XP EARNED</small></div><div><strong>{Math.round(lessonCorrect / Math.max(lessonAnswers, 1) * 100)}%</strong><small>ACCURACY</small></div><div><strong>{lessonCorrect}/{lessonAnswers}</strong><small>CORRECT</small></div></div>
+            <div className="result-actions"><button onClick={() => restartLesson()}>Practice again</button><button className="secondary" onClick={() => document.querySelector('.path-panel')?.scrollIntoView({ behavior: 'smooth' })}>Choose a skill</button></div>
+          </div> : error ? <div className="empty-state"><span>🔌</span><h3>Almost ready!</h3><p>{error}</p><button onClick={() => loadQuestion()}>Try again</button></div> : loading && !question ? <div className="loader">Thinking up a good one…</div> : <>
             <span className="prompt-kicker">Solve this</span><h3>{question?.question}</h3>
             <form onSubmit={submitAnswer}><label htmlFor="answer">Your answer</label><div className="answer-row"><input id="answer" inputMode="decimal" autoComplete="off" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Type your answer" disabled={Boolean(result)} autoFocus/><button className="check-button" disabled={loading || !answer.trim() || Boolean(result)}>{loading ? 'Checking…' : 'Check answer'}</button></div></form>
-            {result && <div className={`feedback ${result.correct ? 'correct' : 'incorrect'}`} role="status"><span className="feedback-icon">{result.correct ? '✓' : '↗'}</span><div><strong>{result.correct ? `Brilliant! +${result.xp_earned} XP` : 'Not quite—keep going.'}</strong><p>{result.correct ? result.explanation : result.hint}</p></div><button onClick={advanceQuestion}>{result.correct ? 'Next challenge' : 'Try another'} →</button></div>}
+            {result && <div className={`feedback ${result.correct ? 'correct' : 'incorrect'}`} role="status"><span className="feedback-icon">{result.correct ? '✓' : '↗'}</span><div><strong>{result.correct ? `Brilliant! +${result.xp_earned} XP` : 'Not quite—keep going.'}</strong><p>{result.correct ? result.explanation : result.hint}</p></div><button onClick={advanceQuestion}>{questionNumber === QUESTIONS_PER_LESSON ? 'See results' : result.correct ? 'Next challenge' : 'Try another'} →</button></div>}
           </>}
         </div>
       </section>
