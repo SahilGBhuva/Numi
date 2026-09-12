@@ -13,8 +13,8 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 
-DEFAULT_DB_PATH = Path(__file__).with_name("pocket_tutor.db")
-VERCEL_DB_PATH = Path("/tmp/pocket_tutor.db")
+DEFAULT_DB_PATH = Path(__file__).with_name("bindit.db")
+VERCEL_DB_PATH = Path("/tmp/bindit.db")
 metadata = MetaData()
 
 student_progress = Table(
@@ -51,7 +51,7 @@ generated_questions = Table(
 
 
 def sqlite_path() -> Path:
-    configured_path = os.getenv("POCKET_TUTOR_DB_PATH")
+    configured_path = os.getenv("BINDIT_DB_PATH") or os.getenv("POCKET_TUTOR_DB_PATH")
     if configured_path:
         return Path(configured_path)
     if os.getenv("VERCEL"):

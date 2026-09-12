@@ -11,8 +11,8 @@ export function SiteHeader({ onError }: SiteHeaderProps) {
         <AvatarControl onError={onError} />
       </div>
 
-      <a className="logo" href="#home" aria-label="Numi logo">
-        N
+      <a className="logo" href="#home" aria-label="Bindit home">
+        <img src="/bindit-mascot.webp" alt="" />
       </a>
     </header>
   )

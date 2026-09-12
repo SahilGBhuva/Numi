@@ -1,4 +1,4 @@
-.numi-rail {
+.bindit-rail {
   position: sticky;
   top: 0;
   z-index: 8;
@@ -13,31 +13,40 @@
   border-right: 1px solid rgba(232, 223, 176, 0.12);
 }
 
-.numi-rail__brand {
+.bindit-rail__brand {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   margin: 0 6px 28px;
-  color: #e0a045;
+  color: #a78bfa;
   text-decoration: none;
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-size: 32px;
+  font-weight: 850;
+  letter-spacing: -0.045em;
   line-height: 1;
 }
 
-.numi-rail__gear {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: #e0a045;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  transform-origin: 50% 50%;
-  animation: numi-gear 14s linear infinite;
+.bindit-rail__brand-mark {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  overflow: hidden;
+  border: 2px solid rgba(167, 139, 250, 0.72);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(52, 37, 122, 0.24);
 }
 
-.numi-rail__list {
+.bindit-rail__brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+  transform: scale(1.1);
+}
+
+.bindit-rail__list {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -46,7 +55,7 @@
   list-style: none;
 }
 
-.numi-rail__item {
+.bindit-rail__item {
   --item-accent: #7eb8e8;
   position: relative;
   display: flex;
@@ -66,15 +75,15 @@
     transform 0.12s ease;
 }
 
-.numi-rail__item.is-home { --item-accent: #7eb8e8; }
-.numi-rail__item.is-progress { --item-accent: #6f9a7a; }
-.numi-rail__item.is-games { --item-accent: #d36b4f; }
-.numi-rail__item.is-quests { --item-accent: #e0a045; }
-.numi-rail__item.is-profile { --item-accent: #b57ad4; }
-.numi-rail__item.is-settings { --item-accent: #c8bf8a; }
-.numi-rail__item.is-more { --item-accent: #a78bfa; }
+.bindit-rail__item.is-home { --item-accent: #8b5cf6; }
+.bindit-rail__item.is-progress { --item-accent: #6f9a7a; }
+.bindit-rail__item.is-games { --item-accent: #ff725e; }
+.bindit-rail__item.is-quests { --item-accent: #e0a045; }
+.bindit-rail__item.is-profile { --item-accent: #b57ad4; }
+.bindit-rail__item.is-settings { --item-accent: #c8bf8a; }
+.bindit-rail__item.is-more { --item-accent: #a78bfa; }
 
-.numi-rail__icon {
+.bindit-rail__icon {
   display: grid;
   place-items: center;
   width: 38px;
@@ -83,32 +92,32 @@
   filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
 }
 
-.numi-rail__icon svg {
+.bindit-rail__icon svg {
   width: 34px;
   height: 34px;
   overflow: visible;
 }
 
-.numi-rail__label {
+.bindit-rail__label {
   font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.numi-rail__item:hover {
+.bindit-rail__item:hover {
   background: rgba(232, 223, 176, 0.05);
 }
 
-.numi-rail__item:focus-visible {
+.bindit-rail__item:focus-visible {
   border-color: var(--item-accent);
 }
 
-.numi-rail__item:active {
+.bindit-rail__item:active {
   transform: translateY(1px);
 }
 
-.numi-rail__item.is-active {
+.bindit-rail__item.is-active {
   color: var(--item-accent);
   border-color: var(--item-accent);
   background: rgba(12, 24, 38, 0.55);
@@ -117,35 +126,29 @@
     0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
-.numi-rail__item.is-active::before,
-.numi-rail__item.is-active::after {
+.bindit-rail__item.is-active::before,
+.bindit-rail__item.is-active::after {
   content: '';
   position: absolute;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #f0d48a, #b8863a 62%, #6d4a1e);
-  box-shadow: inset 0 0 0 1px rgba(40, 24, 8, 0.4);
+  background: radial-gradient(circle at 35% 30%, #ffb29f, #ff725e 62%, #9d4138);
+  box-shadow: inset 0 0 0 1px rgba(40, 24, 8, 0.35);
 }
 
-.numi-rail__item.is-active::before {
+.bindit-rail__item.is-active::before {
   top: 8px;
   right: 10px;
 }
 
-.numi-rail__item.is-active::after {
+.bindit-rail__item.is-active::after {
   bottom: 8px;
   right: 10px;
 }
 
-@keyframes numi-gear {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (max-width: 860px) {
-  .numi-rail {
+  .bindit-rail {
     width: 100%;
     min-height: 0;
     padding: 12px 12px 4px;
@@ -153,39 +156,43 @@
     border-bottom: 1px solid rgba(232, 223, 176, 0.12);
   }
 
-  .numi-rail__brand {
+  .bindit-rail__brand {
     margin: 0 4px 10px;
     font-size: 26px;
   }
 
-  .numi-rail__list {
+  .bindit-rail__brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+
+  .bindit-rail__list {
     flex-direction: row;
     overflow-x: auto;
     gap: 4px;
     padding-bottom: 8px;
   }
 
-  .numi-rail__item {
+  .bindit-rail__item {
     min-height: 48px;
     padding: 6px 10px;
     flex: none;
   }
 
-  .numi-rail__label {
+  .bindit-rail__label {
     font-size: 12px;
     letter-spacing: 0.06em;
   }
 
-  .numi-rail__item.is-active::before,
-  .numi-rail__item.is-active::after {
+  .bindit-rail__item.is-active::before,
+  .bindit-rail__item.is-active::after {
     display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .numi-rail__gear,
-  .numi-rail__item {
-    animation: none;
+  .bindit-rail__item {
     transition: none;
   }
 }
