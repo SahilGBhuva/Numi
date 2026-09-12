@@ -1,93 +1,89 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { getAccountProfile, getFriends, getProgress, type FriendsHub, type Profile, type Progress } from '../lib/api'
+import type { AuthSession } from '../lib/auth'
+import { getStudentId, loadNotebook } from '../lib/session'
 import './HomeScreen.css'
 
-const SCHOLAR_QUOTES = [
-  { text: 'The only true wisdom is in knowing you know nothing.', author: 'Socrates', era: '470–399 BC' },
-  { text: 'Knowing yourself is the beginning of all wisdom.', author: 'Aristotle', era: '384–322 BC' },
-  { text: 'Imagination is more important than knowledge.', author: 'Albert Einstein', era: '1879–1955' },
-  { text: 'Real knowledge is to know the extent of one\'s ignorance.', author: 'Confucius', era: '551–479 BC' },
-  { text: 'If I have seen further it is by standing on the shoulders of giants.', author: 'Isaac Newton', era: '1643–1727' },
-  { text: 'Learning never exhausts the mind.', author: 'Leonardo da Vinci', era: '1452–1519' },
-  { text: 'The beginning is the most important part of the work.', author: 'Plato', era: '428–348 BC' },
-  { text: 'The first principle is that you must not fool yourself — and you are the easiest person to fool.', author: 'Richard Feynman', era: '1918–1988' },
-  { text: 'Reserve your right to think, for even to think wrongly is better than not to think at all.', author: 'Hypatia', era: 'c. 360–415' },
-  { text: 'Nothing in life is to be feared, it is only to be understood.', author: 'Marie Curie', era: '1867–1934' },
-  { text: 'The important thing is not to stop questioning. Curiosity has its own reason for existing.', author: 'Albert Einstein', era: '1879–1955' },
-  { text: 'Education is the kindling of a flame, not the filling of a vessel.', author: 'Plutarch', era: 'c. 46–120' },
+const QUOTES = [
+  ['The beginning is the most important part of the work.', 'Plato'],
+  ['Learning never exhausts the mind.', 'Leonardo da Vinci'],
+  ['Nothing in life is to be feared, it is only to be understood.', 'Marie Curie'],
 ] as const
 
-const CYCLE_MS = 7000
-
-export function Home() {
-  const [index, setIndex] = useState(0)
-  const [visible, setVisible] = useState(true)
+export function Home({ session }: { session: AuthSession | null }) {
+  const [stats, setStats] = useState<Progress | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [social, setSocial] = useState<FriendsHub | null>(null)
+  const notebook = useMemo(() => loadNotebook(), [])
+  const studentId = session?.user.id ?? getStudentId()
+  const accessToken = session?.access_token
+  const quote = QUOTES[new Date().getDate() % QUOTES.length]
 
   useEffect(() => {
-    let transitionTimer = 0
-    const timer = window.setInterval(() => {
-      setVisible(false)
-      transitionTimer = window.setTimeout(() => {
-        setIndex((current) => (current + 1) % SCHOLAR_QUOTES.length)
-        setVisible(true)
-      }, 420)
-    }, CYCLE_MS)
-    return () => {
-      window.clearInterval(timer)
-      window.clearTimeout(transitionTimer)
+    void getProgress(studentId, accessToken).then(setStats).catch(() => setStats(null))
+    if (accessToken) {
+      void getAccountProfile(accessToken).then(setProfile).catch(() => setProfile(null))
+      void getFriends(accessToken).then(setSocial).catch(() => setSocial(null))
     }
-  }, [])
+  }, [studentId, accessToken])
 
-  const quote = SCHOLAR_QUOTES[index]
-
-  function chooseQuote(nextIndex: number) {
-    setVisible(false)
-    window.setTimeout(() => {
-      setIndex(nextIndex)
-      setVisible(true)
-    }, 220)
-  }
+  const xp = profile?.total_xp ?? stats?.total_xp ?? 0
+  const streak = profile?.login_streak ?? stats?.login_streak ?? 0
+  const dailyGoal = profile?.daily_goal ?? 20
+  const todayXp = Math.min(xp, dailyGoal)
+  const goalProgress = Math.min(100, (todayXp / dailyGoal) * 100)
+  const activeCourse = notebook.activeCourse || notebook.courses[0]?.name
+  const active = notebook.courses.find((course) => course.name === activeCourse)
+  const unitCount = active?.units.length ?? 0
+  const noteCount = notebook.deposits.filter((note) => note.course === activeCourse).length
+  const accuracy = stats?.accuracy ?? 0
+  const name = profile?.display_name?.split(' ')[0] ?? 'learner'
 
   return (
-    <section className="home" aria-label="Home">
-      <div className="home__ornaments" aria-hidden="true">
-        <span className="home__ring home__ring--a" />
-        <span className="home__ring home__ring--b" />
-        <span className="home__paper home__paper--a" />
-        <span className="home__paper home__paper--b" />
-        <span className="home__tab home__tab--coral" />
-        <span className="home__tab home__tab--gold" />
-        <span className="home__tab home__tab--violet" />
-      </div>
-
-      <header className="home__header">
-        <p className="home__kicker">bindet</p>
-        <h1 className="home__title">Words from the wise</h1>
+    <section className="dashboard" aria-label="Home dashboard">
+      <header className="dash-welcome">
+        <div><p className="dash-eyebrow">TODAY’S STUDY PLAN</p><h1>Ready to learn, {name}?</h1><p>Keep your streak moving with one focused session.</p></div>
+        <div className="dash-streak" aria-label={`${streak} day streak`}><span>🔥</span><strong>{streak}</strong><small>day streak</small></div>
       </header>
 
-      <figure className={`home__quote ${visible ? 'is-visible' : 'is-fading'}`}>
-        <blockquote className="home__text">
-          <span className="home__mark" aria-hidden="true">“</span>
-          {quote.text}
-          <span className="home__mark home__mark--end" aria-hidden="true">”</span>
-        </blockquote>
-        <figcaption className="home__attribution">
-          <cite className="home__author">{quote.author}</cite>
-          <span className="home__era">{quote.era}</span>
-        </figcaption>
-      </figure>
+      <div className="dash-grid">
+        <section className="dash-primary">
+          <div className="daily-card">
+            <div className="daily-card__top"><span className="daily-orbit" aria-hidden="true">◎</span><div><p>Daily goal</p><h2>{todayXp} of {dailyGoal} XP</h2></div><strong>{Math.round(goalProgress)}%</strong></div>
+            <div className="dash-progress"><span style={{ width: `${goalProgress}%` }} /></div>
+            <a className="dash-cta" href="#tools">Continue learning <span>→</span></a>
+          </div>
 
-      <div className="home__progress" role="tablist" aria-label="Quote progress">
-        {SCHOLAR_QUOTES.map((item, i) => (
-          <button
-            key={`${item.author}-${i}`}
-            type="button"
-            role="tab"
-            className={`home__dot ${i === index ? 'is-active' : ''}`}
-            aria-selected={i === index}
-            aria-label={`Quote ${i + 1} of ${SCHOLAR_QUOTES.length}: ${item.author}`}
-            onClick={() => chooseQuote(i)}
-          />
-        ))}
+          <div className="quick-grid" aria-label="Quick actions">
+            <a href="#tools" className="quick-card is-purple"><span>⚡</span><strong>Quick quiz</strong><small>Test this unit</small></a>
+            <a href="#tools" className="quick-card is-blue"><span>▤</span><strong>Review cards</strong><small>Practice recall</small></a>
+            <a href="#tools" className="quick-card is-coral"><span>⌁</span><strong>Scan notes</strong><small>Turn pages into practice</small></a>
+          </div>
+
+          <section className="continue-card">
+            <div className="continue-head"><div><p>CONTINUE STUDYING</p><h2>{activeCourse || 'Start your first course'}</h2></div><a href="#tools">Open course</a></div>
+            {activeCourse ? <div className="course-overview"><div className="course-badge">{activeCourse.slice(0, 2).toUpperCase()}</div><div><strong>{unitCount} unit{unitCount === 1 ? '' : 's'} ready</strong><span>{noteCount} uploaded note{noteCount === 1 ? '' : 's'} · {accuracy}% quiz accuracy</span></div></div> : <p className="empty-copy">Add a course and upload notes to get a personalized study path.</p>}
+          </section>
+
+          <section className="topic-card">
+            <div className="section-title"><div><p>YOUR PROGRESS</p><h2>Skills to strengthen</h2></div><a href="#progress">See all</a></div>
+            <div className="skill-list">
+              {(stats?.topics ?? []).slice(0, 3).map((topic) => <div className="skill-row" key={topic.topic}><span>{topic.topic.replaceAll('_', ' ')}</span><div><i style={{ width: `${topic.accuracy}%` }} /></div><strong>{topic.accuracy}%</strong></div>)}
+              {!stats?.topics.length ? <p className="empty-copy">Take a quiz and your strongest and weakest skills will appear here.</p> : null}
+            </div>
+          </section>
+        </section>
+
+        <aside className="dash-side">
+          <section className="stat-strip"><div><span>⚡</span><strong>{xp}</strong><small>Total XP</small></div><div><span>🎯</span><strong>{accuracy}%</strong><small>Accuracy</small></div><div><span>📚</span><strong>{notebook.courses.length}</strong><small>Courses</small></div></section>
+          <section className="league-card">
+            <div className="section-title"><div><p>FRIENDS LEAGUE</p><h2>This week</h2></div><a href="#profile">View</a></div>
+            <ol>{(social?.leaderboard ?? []).slice(0, 4).map((friend, index) => <li key={friend.student_id} className={friend.student_id === studentId ? 'is-you' : ''}><b>{index + 1}</b><span>{friend.display_name.slice(0, 1)}</span><div><strong>{friend.student_id === studentId ? 'You' : friend.display_name}</strong><small>{friend.active_today ? 'Learning today' : `🔥 ${friend.streak}`}</small></div><em>{friend.total_xp} XP</em></li>)}</ol>
+            {!social?.leaderboard.length ? <p className="empty-copy">Add friends to unlock your private league.</p> : null}
+          </section>
+          <section className="quest-card"><span className="quest-icon">🏆</span><div><p>FRIEND QUEST</p><h2>{social?.quests[0] ? `You + ${social.quests[0].friend_name}` : 'Learn better together'}</h2><small>{social?.quests[0] ? `${social.quests[0].progress_xp} / ${social.quests[0].target_xp} shared XP` : 'Start a shared XP goal from your profile.'}</small></div><a href="#profile">→</a></section>
+          <figure className="wisdom-card"><blockquote>“{quote[0]}”</blockquote><figcaption>— {quote[1]}</figcaption></figure>
+        </aside>
       </div>
     </section>
   )

@@ -48,7 +48,7 @@ function AppShell() {
           <span className="binder-sparks__tab" />
           <span className="binder-sparks__ring" />
         </div>
-        {screen === 'home' ? <Home /> : null}
+        {screen === 'home' ? <Home session={session} /> : null}
         {screen === 'tools' ? <Tools accessToken={session?.access_token} /> : null}
         {screen === 'progress' ? <Progress session={session} /> : null}
         {screen === 'games' ? <Games /> : null}
