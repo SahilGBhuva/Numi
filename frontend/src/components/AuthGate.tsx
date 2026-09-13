@@ -1,35 +1,53 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { consumeAuthRedirectSession, loadAuthSession, refreshAuthSession, resendSignupConfirmation, signIn, signUp, type AuthSession } from '../lib/auth'
+import { useEffect, useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
+import {
+  consumeAuthRedirectSession,
+  loadAuthSession,
+  refreshAuthSession,
+  resendSignupConfirmation,
+  signIn,
+  signUp,
+  verifySignupCode,
+  type AuthSession,
+} from '../lib/auth'
 import { AuthContext } from '../lib/AuthContext'
 import './AuthGate.css'
 import './GuestAuth.css'
 import '../Brand.css'
 
 type Mode = 'login' | 'signup'
+type GateView = 'landing' | 'auth' | 'confirm'
 const GUEST_KEY = 'bindit-guest-mode'
+const RESEND_SECS = 60
 
 function BrandMark() {
   return (
-    <div className="auth-brand-mark" aria-hidden="true">
-      <img src="/bindit-mascot.webp" alt="" />
+    <div className="lp-mark" aria-hidden="true">
+      <img src="/bindet-binder.png" alt="" />
     </div>
   )
+}
+
+function trackSpotlight(event: MouseEvent<HTMLElement>) {
+  const box = event.currentTarget.getBoundingClientRect()
+  event.currentTarget.style.setProperty('--mx', `${event.clientX - box.left}px`)
+  event.currentTarget.style.setProperty('--my', `${event.clientY - box.top}px`)
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(() => consumeAuthRedirectSession() ?? loadAuthSession())
   const [loading, setLoading] = useState(Boolean(session))
   const [guestMode, setGuestMode] = useState(() => localStorage.getItem(GUEST_KEY) === '1')
+  const [view, setView] = useState<GateView>('landing')
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  const [confirmationEmail, setConfirmationEmail] = useState('')
-  const [resendSeconds, setResendSeconds] = useState(0)
-  const [resending, setResending] = useState(false)
+  const [pendingEmail, setPendingEmail] = useState('')
+  const [resendIn, setResendIn] = useState(0)
 
   const passwordScore = useMemo(() => {
     let score = 0
@@ -52,17 +70,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (resendSeconds <= 0) return
-    const timer = window.setInterval(() => setResendSeconds((value) => Math.max(0, value - 1)), 1000)
-    return () => window.clearInterval(timer)
-  }, [resendSeconds])
+    if (resendIn <= 0) return
+    const timer = window.setTimeout(() => setResendIn((value) => value - 1), 1000)
+    return () => window.clearTimeout(timer)
+  }, [resendIn])
+
+  function openAuth(nextMode: Mode = 'signup') {
+    setMode(nextMode)
+    setView('auth')
+    setError('')
+    setMessage('')
+  }
 
   function switchMode(nextMode: Mode) {
     setMode(nextMode)
     setError('')
     setMessage('')
-    setConfirmationEmail('')
-    setResendSeconds(0)
     setPassword('')
     setShowPassword(false)
   }
@@ -74,26 +97,35 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setMessage('')
   }
 
-  async function resendConfirmation() {
-    if (!confirmationEmail || resendSeconds > 0 || resending) return
-    setResending(true)
+  function startConfirm(nextEmail: string, note: string) {
+    setPendingEmail(nextEmail)
+    setCode('')
+    setMessage(note)
+    setError('')
+    setResendIn(RESEND_SECS)
+    setView('confirm')
+  }
+
+  async function sendCodeAgain() {
+    if (resendIn > 0 || busy || !pendingEmail) return
+    setBusy(true)
     setError('')
     try {
-      await resendSignupConfirmation(confirmationEmail)
-      setMessage(`A new confirmation email was sent to ${confirmationEmail}.`)
-      setResendSeconds(60)
+      await resendSignupConfirmation(pendingEmail)
+      setResendIn(RESEND_SECS)
+      setMessage('A new code is on the way. Check your inbox in about a minute if it is not here yet.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not resend the confirmation email.')
+      setError(err instanceof Error ? err.message : 'Could not resend the code.')
     } finally {
-      setResending(false)
+      setBusy(false)
     }
   }
 
   if (loading) {
     return (
-      <main className="auth-screen auth-loading-screen">
-        <div className="auth-loading-orb" aria-hidden="true" />
-        <p>Opening bindit…</p>
+      <main className="lp lp-loading">
+        <div className="lp-orb" aria-hidden="true" />
+        <p>Opening Bindet…</p>
       </main>
     )
   }
@@ -104,22 +136,27 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setBusy(true)
       setError('')
       setMessage('')
+      const trimmed = email.trim()
       try {
         if (mode === 'login') {
-          setSession(await signIn(email.trim(), password))
+          try {
+            setSession(await signIn(trimmed, password))
+          } catch (err) {
+            const text = err instanceof Error ? err.message : ''
+            if (/confirm|not confirmed|verify/i.test(text)) {
+              startConfirm(trimmed, 'Confirm your email with the code we sent, then you can get in.')
+              return
+            }
+            throw err
+          }
         } else {
           if (password.length < 8) {
             setError('Use at least 8 characters for your password.')
             return
           }
-          const normalizedEmail = email.trim()
-          const result = await signUp(normalizedEmail, password)
+          const result = await signUp(trimmed, password)
           if (result.session) setSession(result.session)
-          else {
-            setConfirmationEmail(normalizedEmail)
-            setResendSeconds(60)
-            setMessage(`Check ${normalizedEmail} and confirm your email. We’ll bring you straight back to bindit.`)
-          }
+          else startConfirm(trimmed, 'Enter the code from your email. If it does not arrive, you can resend after 1 minute.')
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'We couldn’t complete that request. Try again.')
@@ -128,84 +165,219 @@ export function AuthGate({ children }: { children: ReactNode }) {
       }
     }
 
-    return (
-      <main className="auth-screen">
-        <section className="auth-shell">
-          <aside className="auth-story">
-            <div className="auth-brand-row"><BrandMark /><span>bindit</span></div>
-            <div className="auth-story-copy">
-              <span className="auth-eyebrow">Your learning command center</span>
-              <h1>Turn everything you study into momentum.</h1>
-              <p>Notes, quizzes, progress, friends, and AI guidance — connected in one fast workspace.</p>
+    async function submitCode(event: FormEvent) {
+      event.preventDefault()
+      setBusy(true)
+      setError('')
+      try {
+        setSession(await verifySignupCode(pendingEmail, code.trim()))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'That code did not work.')
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    if (view === 'confirm') {
+      return (
+        <main className="lp lp-auth-only">
+          <div className="lp-glow lp-glow--a" aria-hidden="true" />
+          <section className="lp-auth-card lp-spotlight" onMouseMove={trackSpotlight}>
+            <BrandMark />
+            <p className="lp-kicker">Confirm email</p>
+            <h2>Check your inbox</h2>
+            <p className="lp-lead">We sent a code to {pendingEmail}. Paste it below. You can resend after 1 minute if it never shows up.</p>
+            <form className="lp-form" onSubmit={submitCode}>
+              <label>
+                <span>Confirmation code</span>
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="6-digit code"
+                  required
+                  disabled={busy}
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                />
+              </label>
+              {error ? <div className="lp-feedback is-error" role="alert">{error}</div> : null}
+              {message ? <div className="lp-feedback is-ok" role="status">{message}</div> : null}
+              <button className="lp-btn lp-btn--primary" type="submit" disabled={busy}>
+                {busy ? 'Checking…' : 'Confirm and enter'}
+              </button>
+            </form>
+            <button className="lp-resend" type="button" disabled={busy || resendIn > 0} onClick={() => void sendCodeAgain()}>
+              {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+            </button>
+            <button className="lp-text-btn" type="button" disabled={busy} onClick={() => setView('auth')}>
+              Back to sign in
+            </button>
+          </section>
+        </main>
+      )
+    }
+
+    if (view === 'auth') {
+      return (
+        <main className="lp lp-auth-only">
+          <div className="lp-glow lp-glow--a" aria-hidden="true" />
+          <section className="lp-auth-card lp-spotlight" onMouseMove={trackSpotlight}>
+            <button className="lp-text-btn lp-back" type="button" onClick={() => setView('landing')}>
+              ← Back to Bindet
+            </button>
+            <div className="lp-auth-brand">
+              <BrandMark />
+              <span>bindet</span>
             </div>
-            <div className="auth-preview-card auth-preview-card--brand">
-              <img className="auth-preview-mascot" src="/bindit-mascot.webp" alt="Bindit otter mascot" />
-              <div className="auth-preview-content">
-                <div className="auth-preview-top"><span className="auth-preview-dot" /><span>Live learning graph</span></div>
-                <strong>3 concepts connected</strong>
-                <div className="auth-progress-track"><span /></div>
-                <div className="auth-preview-tags"><span>Functions</span><span>Vectors</span><span>Biology</span></div>
-              </div>
+            <p className="lp-kicker">{mode === 'login' ? 'Welcome back' : 'Start building'}</p>
+            <h2>{mode === 'login' ? 'Log in' : 'Create your account'}</h2>
+            <div className="lp-tabs" role="tablist" aria-label="Authentication mode">
+              <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'is-on' : ''} disabled={busy} onClick={() => switchMode('login')}>
+                Log in
+              </button>
+              <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'is-on' : ''} disabled={busy} onClick={() => switchMode('signup')}>
+                Sign up
+              </button>
             </div>
-          </aside>
-
-          <section className="auth-panel">
-            <div className="auth-mobile-brand"><BrandMark /><span>bindit</span></div>
-            <div className="auth-panel-inner">
-              <div className="auth-heading">
-                <span className="auth-kicker">{mode === 'login' ? 'Welcome back' : 'Build your learning system'}</span>
-                <h2>{mode === 'login' ? 'Log in to bindit' : 'Create your account'}</h2>
-                <p>{mode === 'login' ? 'Pick up exactly where you left off.' : 'Start with your notes. bindit handles the rest.'}</p>
-              </div>
-
-              <div className="auth-segmented" role="tablist" aria-label="Authentication mode">
-                <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} disabled={busy} onClick={() => switchMode('login')}>Log in</button>
-                <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'active' : ''} disabled={busy} onClick={() => switchMode('signup')}>Sign up</button>
-              </div>
-
-              <form className="auth-form" onSubmit={submit}>
-                <label>
-                  <span>Email</span>
-                  <input type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" required disabled={busy} value={email} onChange={(event) => setEmail(event.target.value)} />
-                </label>
-                <label>
-                  <span>Password</span>
-                  <div className="auth-password-wrap">
-                    <input type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'signup' ? 8 : 6} placeholder={mode === 'signup' ? 'At least 8 characters' : 'Enter your password'} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} />
-                    <button className="auth-show-password" type="button" disabled={busy} aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((value) => !value)}>{showPassword ? 'Hide' : 'Show'}</button>
-                  </div>
-                </label>
-
-                {mode === 'signup' && password ? (
-                  <div className="auth-strength" aria-live="polite">
-                    <div className="auth-strength-bars">{[0, 1, 2, 3].map((index) => <span key={index} className={index < passwordScore ? 'filled' : ''} />)}</div>
-                    <small>{passwordScore <= 1 ? 'Make it stronger' : passwordScore === 2 ? 'Good password' : 'Strong password'}</small>
-                  </div>
-                ) : null}
-
-                {error ? <div className="auth-feedback auth-error" role="alert">{error}</div> : null}
-                {message ? <div className="auth-feedback auth-message" role="status">{message}</div> : null}
-                {confirmationEmail ? (
-                  <button className="auth-resend" type="button" disabled={resending || resendSeconds > 0} onClick={resendConfirmation}>
-                    {resending ? 'Sending…' : resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : 'Resend confirmation email'}
+            <form className="lp-form" onSubmit={submit}>
+              <label>
+                <span>Email</span>
+                <input type="email" autoComplete="email" placeholder="you@school.edu" required disabled={busy} value={email} onChange={(event) => setEmail(event.target.value)} />
+              </label>
+              <label>
+                <span>Password</span>
+                <div className="lp-pass">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    minLength={mode === 'signup' ? 8 : 6}
+                    required
+                    disabled={busy}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                  <button type="button" disabled={busy} onClick={() => setShowPassword((value) => !value)}>
+                    {showPassword ? 'Hide' : 'Show'}
                   </button>
-                ) : null}
-                <button className="auth-primary" type="submit" disabled={busy}>{busy ? <><span className="auth-spinner" aria-hidden="true" />Working…</> : mode === 'login' ? 'Log in' : 'Create account'}</button>
-                <p className="auth-terms">{mode === 'signup' ? 'By creating an account, you agree to use bindit responsibly.' : 'Your progress stays connected to your account.'}</p>
-              </form>
+                </div>
+              </label>
+              {mode === 'signup' && password ? (
+                <div className="lp-strength">
+                  <div>{[0, 1, 2, 3].map((index) => <span key={index} className={index < passwordScore ? 'is-on' : ''} />)}</div>
+                  <small>{passwordScore <= 1 ? 'Make it stronger' : passwordScore === 2 ? 'Good password' : 'Strong password'}</small>
+                </div>
+              ) : null}
+              {error ? <div className="lp-feedback is-error" role="alert">{error}</div> : null}
+              {message ? <div className="lp-feedback is-ok" role="status">{message}</div> : null}
+              <button className="lp-btn lp-btn--primary" type="submit" disabled={busy}>
+                {busy ? 'Working…' : mode === 'login' ? 'Log in' : 'Get started'}
+              </button>
+            </form>
+            <div className="auth-guest-separator"><span>or</span></div>
+            <button className="lp-btn lp-btn--ghost" type="button" disabled={busy} onClick={continueAsGuest}>
+              Continue as guest
+            </button>
+          </section>
+        </main>
+      )
+    }
 
-              <div className="auth-guest-separator"><span>or</span></div>
-              <button className="auth-guest-button" type="button" disabled={busy} onClick={continueAsGuest}>Continue as guest</button>
-              <p className="auth-guest-copy">Guest mode is temporary. Sign in to save progress, use AI notes, and connect with friends.</p>
+    return (
+      <div className="lp">
+        <div className="lp-glow lp-glow--a" aria-hidden="true" />
+        <div className="lp-glow lp-glow--b" aria-hidden="true" />
+        <header className="lp-nav">
+          <a className="lp-nav__brand" href="#top" onClick={(event) => { event.preventDefault(); setView('landing') }}>
+            <BrandMark />
+            bindet
+          </a>
+          <nav className="lp-nav__links">
+            <a href="#product">Product</a>
+            <a href="#features">Features</a>
+            <button type="button" onClick={() => openAuth('login')}>Sign in</button>
+          </nav>
+          <button className="lp-btn lp-btn--nav" type="button" onClick={() => openAuth('signup')}>
+            Get started
+          </button>
+        </header>
 
-              <p className="auth-switch-copy">
-                {mode === 'login' ? 'New to bindit?' : 'Already have an account?'}{' '}
-                <button type="button" disabled={busy} onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Create an account' : 'Log in'}</button>
-              </p>
+        <main>
+          <section className="lp-hero" id="top">
+            <p className="lp-kicker">The binder for how you actually study</p>
+            <h1>
+              Keep your learning
+              <span> together.</span>
+            </h1>
+            <p className="lp-lead">
+              Notes, flashcards, quizzes, and quests snap into one cinematic workspace — then cinch shut when you need the desk.
+            </p>
+            <div className="lp-hero__cta">
+              <button className="lp-btn lp-btn--primary" type="button" onClick={() => openAuth('signup')}>
+                Start building
+              </button>
+              <button className="lp-btn lp-btn--ghost" type="button" onClick={continueAsGuest}>
+                Browse as guest
+              </button>
+            </div>
+            <div className="lp-hero__frame" id="product">
+              <div className="lp-mock">
+                <div className="lp-mock__bar">
+                  <span />
+                  <span />
+                  <span />
+                  <em>Bindet · Tools</em>
+                </div>
+                <div className="lp-mock__body">
+                  <aside>
+                    <b>bindet</b>
+                    <i>Home</i>
+                    <i className="is-on">Tools</i>
+                    <i>Quests</i>
+                    <i>Profile</i>
+                  </aside>
+                  <div>
+                    <p>Now navigating</p>
+                    <strong>Math · Algebra</strong>
+                    <div className="lp-mock__pills">
+                      <span>Note taker</span>
+                      <span className="is-on">Flashcards</span>
+                      <span>Quiz</span>
+                    </div>
+                    <div className="lp-mock__cards">
+                      <article>Derivative of x²</article>
+                      <article>Chain rule</article>
+                      <article>Limit as h → 0</article>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
-        </section>
-      </main>
+
+          <section className="lp-bento" id="features">
+            <article className="lp-card lp-card--wide lp-spotlight" onMouseMove={trackSpotlight}>
+              <span>Workflow</span>
+              <h3>Courses snap. The workbench stays.</h3>
+              <p>Scroll courses on the left. Notes, cards, and quizzes live on the right — one binder, not twelve tabs.</p>
+            </article>
+            <article className="lp-card lp-spotlight" onMouseMove={trackSpotlight}>
+              <span>Speed</span>
+              <h3>Pull a lecture</h3>
+              <p>The lectern fans your deposits into Goal, Break it down, Use your notes, Check yourself.</p>
+            </article>
+            <article className="lp-card lp-spotlight" onMouseMove={trackSpotlight}>
+              <span>Automation</span>
+              <h3>Pages become practice</h3>
+              <p>Scan a page, drop extra notes, then drill flashcards and quizzes without leaving the unit.</p>
+            </article>
+            <article className="lp-card lp-card--mid lp-spotlight" onMouseMove={trackSpotlight}>
+              <span>Together</span>
+              <h3>Friend quests</h3>
+              <p>Share a code, start a goal, keep a private league with the people you actually study with.</p>
+            </article>
+          </section>
+        </main>
+      </div>
     )
   }
 

@@ -122,6 +122,13 @@ export async function resendSignupConfirmation(email: string) {
   }
 }
 
+export async function verifySignupCode(email: string, token: string) {
+  const session = asSession(await authRequest('verify', { type: 'signup', email, token }))
+  if (!session) throw new Error('That code did not work. Try again or resend.')
+  saveAuthSession(session)
+  return session
+}
+
 export async function signIn(email: string, password: string) {
   const session = asSession(await authRequest('token?grant_type=password', { email, password }))
   if (!session) throw new Error('Could not create a login session.')
