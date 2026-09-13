@@ -149,8 +149,14 @@ export function offerQuests(
   )[0]
   const focus = busy ?? course
   const unit = focus?.units[0]
-  const tone = (name?: string) => courses.find((item) => item.name === name)?.tone ?? '#e0a045'
+  const tone = (name?: string) => courses.find((item) => item.name === name)?.tone ?? '#7e87ef'
   const notesIn = (name: string) => deposits.filter((item) => item.course === name).length
+  const attemptsIn = (name: string, unitName?: string) => attempts.filter((item) => {
+    if (item.course !== name) return false
+    if (unitName && item.unit !== unitName) return false
+    return true
+  }).length
+
   const offers: QuestOffer[] = [
     {
       id: `xp-day-${today}`,
@@ -159,16 +165,16 @@ export function offerQuests(
       kind: 'xp',
       target: dailyXp,
       window: 'day',
-      tone: '#e0a045',
+      tone: '#7e87ef',
     },
     {
       id: `xp-week-${today.slice(0, 7)}`,
       title: 'Hit 100 XP this week',
-      hint: 'A week-long pull. Any study on Bindet feeds it.',
+      hint: 'A week-long pull. Any study on bindit feeds it.',
       kind: 'xp',
       target: 100,
       window: 'week',
-      tone: '#f4b44f',
+      tone: '#8b93ff',
     },
   ]
 
@@ -177,7 +183,7 @@ export function offerQuests(
     offers.push({
       id: `notes-${focus.name}-${today}`,
       title: have === 0 ? `Seed ${focus.name} with a note` : `Drop 2 notes in ${focus.name}`,
-      hint: have === 0 ? 'Open Tools, pick a unit, and scan or upload a file.' : 'Add two more pages to that course binder.',
+      hint: have === 0 ? 'Open Workspace, pick a unit, and scan or upload a file.' : 'Add two more pages to that course binder.',
       kind: 'notes',
       target: have === 0 ? 1 : 2,
       window: 'day',
@@ -187,10 +193,13 @@ export function offerQuests(
   }
 
   if (focus && unit) {
+    const completed = attemptsIn(focus.name, unit)
     offers.push({
       id: `quiz-${focus.name}-${unit}-${today}`,
-      title: `Answer 3 in ${unit}`,
-      hint: `Run the ${focus.name} quiz on that unit tab.`,
+      title: completed === 0 ? `Start 3 questions in ${unit}` : `Do 3 more in ${unit}`,
+      hint: completed === 0
+        ? `Kick off your first ${focus.name} practice set for this unit.`
+        : `You have already answered ${completed} here. Add three fresh reps.`,
       kind: 'quiz',
       target: 3,
       window: 'day',
@@ -202,7 +211,7 @@ export function offerQuests(
     offers.push({
       id: `unit-${focus.name}-${today}`,
       title: `Open a unit in ${focus.name}`,
-      hint: 'Add a unit tab in Tools, then come back to pin a quiz quest.',
+      hint: 'Add a unit tab in Workspace, then come back to pin a quiz quest.',
       kind: 'notes',
       target: 1,
       window: 'day',
@@ -214,11 +223,11 @@ export function offerQuests(
   offers.push({
     id: `streak-${today}`,
     title: 'Hold a 3-day streak',
-    hint: 'Just open Bindet three days in a row.',
+    hint: 'Open bindit three days in a row and keep the chain alive.',
     kind: 'streak',
     target: 3,
     window: 'open',
-    tone: '#ff7368',
+    tone: '#cf7d72',
   })
 
   if (courses.length > 1) {
@@ -227,7 +236,7 @@ export function offerQuests(
       offers.push({
         id: `visit-${other.name}-${today}`,
         title: `Leave a note in ${other.name}`,
-        hint: 'Switch courses in Tools and drop one file.',
+        hint: 'Switch courses in Workspace and drop one useful file.',
         kind: 'notes',
         target: 1,
         window: 'day',
@@ -243,7 +252,7 @@ export function offerQuests(
 export function startQuest(offer: QuestOffer, stats: QuestStats, current: ActiveQuest[]): ActiveQuest[] {
   const live = pruneQuests(current).filter((item) => !item.doneAt)
   if (live.some((item) => item.id === offer.id) || live.length >= 4) return current
-  const baseline = offer.kind === 'xp' ? stats.xp : offer.kind === 'streak' ? 0 : 0
+  const baseline = offer.kind === 'xp' ? stats.xp : 0
   return [
     {
       ...offer,

@@ -1,15 +1,28 @@
-#root { min-height:100vh; }
+#root {
+  min-height: 100vh;
+}
 
 .app-shell {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: 228px minmax(0, 1fr);
   min-height: 100vh;
   align-items: start;
-  transition: grid-template-columns 0.42s cubic-bezier(0.22, 1.2, 0.32, 1);
+  background: #08080a;
+  transition: grid-template-columns 260ms ease;
 }
 
 .app-shell:has(.numi-rail.is-shut) {
-  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.sheet {
+  position: relative;
+  min-width: 0;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 40% -16%, color-mix(in srgb, var(--page-accent) 7%, transparent), transparent 28%),
+    #09090b;
 }
 
 .sheet.is-home { --page-accent: var(--accent-home); }
@@ -21,12 +34,34 @@
 .sheet.is-settings { --page-accent: var(--accent-settings); }
 .sheet.is-more { --page-accent: var(--accent-more); }
 
+/* The old binder confetti competed with the product UI. Keep the shell quiet. */
+.blob,
+.binder-sparks {
+  display: none !important;
+}
+
 .sheet .board,
-.sheet .home__quote,
 .sheet.is-tools .panel,
 .sheet.is-profile .profile-main,
 .sheet.is-profile .profile-panels {
-  border-color: var(--page-accent);
+  border-color: color-mix(in srgb, var(--page-accent) 28%, rgba(255, 255, 255, 0.08));
+}
+
+.notice {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 40;
+  max-width: min(420px, calc(100vw - 44px));
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  background: rgba(18, 18, 22, 0.94);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.34);
+  color: #d9d9de;
+  font-size: 13px;
+  backdrop-filter: blur(18px);
 }
 
 @media (max-width: 860px) {
@@ -34,5 +69,11 @@
   .app-shell:has(.numi-rail.is-shut) {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell {
+    transition: none;
   }
 }
