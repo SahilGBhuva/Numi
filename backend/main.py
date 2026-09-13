@@ -41,12 +41,18 @@ app.add_middleware(
 
 Topic = Literal["addition", "subtraction", "multiplication", "division", "mixed"]
 
+# Unauthenticated callers choose their own ID, so it is stored under this prefix.
+# Supabase account IDs are bare UUIDs and can never contain it, which means a
+# guest request can never read or write a real account's rows.
+GUEST_ID_PREFIX = "guest:"
+GUEST_ID_MAX_LENGTH = 100 - len(GUEST_ID_PREFIX)
+
 
 class AnswerRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     question_id: str = Field(min_length=16, max_length=64)
     student_answer: str = Field(max_length=2000)
-    student_id: str = Field(default="anonymous", min_length=1, max_length=100)
+    student_id: str = Field(default="anonymous", min_length=1, max_length=GUEST_ID_MAX_LENGTH)
 
 
 class AnswerResponse(BaseModel):
@@ -73,7 +79,7 @@ class NoteContext(BaseModel):
 class QuestionRequest(BaseModel):
     topic: Topic = "mixed"
     difficulty: int = Field(default=1, ge=1, le=3)
-    student_id: str = Field(default="anonymous", min_length=1, max_length=100)
+    student_id: str = Field(default="anonymous", min_length=1, max_length=GUEST_ID_MAX_LENGTH)
     notes: NoteContext | None = None
 
 
@@ -183,7 +189,8 @@ class AuthConfigResponse(BaseModel):
 
 
 class DailyLoginRequest(BaseModel):
-    student_id: str = Field(min_length=1, max_length=100)
+    # Ignored: the student is always the authenticated caller. Accepted for older clients.
+    student_id: str | None = Field(default=None, max_length=100)
 
 
 class FriendRequestCreate(BaseModel):
@@ -331,10 +338,15 @@ def generate_notes_question(notes: NoteContext, difficulty: int) -> GeneratedQue
     )
 
 
+def guest_student_id(claimed_id: str) -> str:
+    return f"{GUEST_ID_PREFIX}{claimed_id}"
+
+
 def verified_student_id(claimed_id: str, authorization: str | None) -> str:
+    """Authenticated callers are their token's subject; anyone else is a namespaced guest."""
     if authorization:
         return auth.authenticated_user(authorization)["id"]
-    return claimed_id
+    return guest_student_id(claimed_id)
 
 
 def topic_stats(record: dict) -> list[TopicStat]:
@@ -885,10 +897,9 @@ def get_my_progress(authorization: Annotated[str | None, Header()] = None):
 
 @app.get("/api/progress/{student_id}", response_model=ProgressResponse)
 def get_progress(student_id: str, authorization: Annotated[str | None, Header()] = None):
-    if authorization:
-        verified = auth.authenticated_user(authorization)["id"]
-        if verified != student_id:
-            raise HTTPException(status_code=403, detail="You can only view your own progress")
+    verified = auth.authenticated_user(authorization)["id"]
+    if verified != student_id:
+        raise HTTPException(status_code=403, detail="You can only view your own progress")
     record = database.get_progress(student_id)
     if record is None:
         raise HTTPException(status_code=404, detail="No progress found for this student")
@@ -897,6 +908,6 @@ def get_progress(student_id: str, authorization: Annotated[str | None, Header()]
 
 @app.post("/api/daily-login", response_model=ProgressResponse)
 def daily_login(data: DailyLoginRequest, authorization: Annotated[str | None, Header()] = None):
-    student_id = verified_student_id(data.student_id, authorization)
+    student_id = auth.authenticated_user(authorization)["id"]
     record = database.record_daily_login(student_id)
     return progress_response(student_id, record)
