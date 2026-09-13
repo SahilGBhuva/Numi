@@ -86,8 +86,54 @@ export type PersonSuggestion = { student_id: string; username: string; display_n
 export type SocialActivity = { id: number; student_id: string; username: string; display_name: string; xp: number; created_at: string; reaction_count: number; reacted: boolean }
 export type SocialNotification = { id: number; kind: string; message: string; is_read: boolean; created_at: string }
 export type FriendsHub = { friends: Friend[]; requests: FriendRequest[]; leaderboard: Friend[]; quests: FriendQuest[]; suggestions: PersonSuggestion[]; activity: SocialActivity[]; notifications: SocialNotification[] }
+export type StudyGroupMember = { student_id: string; username: string; display_name: string; avatar_path: string; role: 'owner' | 'member'; weekly_xp: number; joined_at: string }
+export type StudyGroupActivity = { id: number; student_id: string; display_name: string; xp: number; created_at: string }
+export type StudyGroup = {
+  id: string
+  name: string
+  description: string
+  invite_code: string
+  weekly_goal_xp: number
+  weekly_xp: number
+  role: 'owner' | 'member'
+  created_at: string
+  members: StudyGroupMember[]
+  activity: StudyGroupActivity[]
+}
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
+const CACHE_WINDOW_MS = 30_000
+
+function tokenSubject(accessToken: string) {
+  try {
+    const encoded = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')
+    const payload = JSON.parse(atob(padded)) as { sub?: string }
+    if (payload.sub) return payload.sub
+  } catch {
+    // Non-JWT development sessions still get isolated in-memory cache keys.
+  }
+  let hash = 0
+  for (let index = 0; index < accessToken.length; index += 1) hash = Math.imul(31, hash) + accessToken.charCodeAt(index) | 0
+  return `session-${hash >>> 0}`
+}
+
+function readSessionCache<T>(key: string): { savedAt: number; data: T } | null {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(key) ?? 'null') as { savedAt: number; data: T } | null
+    return cached?.data ? cached : null
+  } catch {
+    return null
+  }
+}
+
+function writeSessionCache<T>(key: string, data: T) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data }))
+  } catch {
+    // Storage can be unavailable in private browsing; the in-memory cache still works.
+  }
+}
 
 async function resolvedToken(explicit?: string): Promise<string | undefined> {
   if (explicit) return explicit
@@ -189,7 +235,21 @@ export function analyzeAnswer(question: GeneratedQuestion, studentAnswer: string
   }, accessToken)
 }
 
-export async function getProgress(studentId: string, accessToken?: string): Promise<Progress | null> {
+const progressCache = new Map<string, { savedAt: number; data: Progress | null }>()
+const profileCache = new Map<string, { savedAt: number; data: Profile | null }>()
+
+export function getCachedProgress(studentId: string) {
+  return progressCache.get(studentId)?.data ?? readSessionCache<Progress>(`bindit:progress:${studentId}`)?.data ?? null
+}
+
+export function getCachedProfile(accessToken: string) {
+  const identity = tokenSubject(accessToken)
+  return profileCache.get(identity)?.data ?? readSessionCache<Profile>(`bindit:profile:${identity}`)?.data ?? null
+}
+
+export async function getProgress(studentId: string, accessToken?: string, force = false): Promise<Progress | null> {
+  const cached = progressCache.get(studentId) ?? readSessionCache<Progress>(`bindit:progress:${studentId}`)
+  if (!force && cached && Date.now() - cached.savedAt < CACHE_WINDOW_MS) return cached.data
   const headers = new Headers()
   const token = await resolvedToken(accessToken)
   if (token) headers.set('Authorization', `Bearer ${token}`)
@@ -199,16 +259,25 @@ export async function getProgress(studentId: string, accessToken?: string): Prom
     const data = (await response.json().catch(() => null)) as { detail?: string } | null
     throw new Error(data?.detail ?? `Bindit could not load progress (${response.status}).`)
   }
-  return response.json() as Promise<Progress>
+  const data = await response.json() as Progress
+  progressCache.set(studentId, { savedAt: Date.now(), data })
+  writeSessionCache(`bindit:progress:${studentId}`, data)
+  return data
 }
 
-export async function getAccountProfile(accessToken: string): Promise<Profile | null> {
+export async function getAccountProfile(accessToken: string, force = false): Promise<Profile | null> {
+  const identity = tokenSubject(accessToken)
+  const cached = profileCache.get(identity) ?? readSessionCache<Profile>(`bindit:profile:${identity}`)
+  if (!force && cached && Date.now() - cached.savedAt < CACHE_WINDOW_MS) return cached.data
   const response = await fetch(`${API_URL}/api/account/profile`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (response.status === 404) return null
   if (!response.ok) throw new Error('Could not load your Bindit profile.')
-  return response.json() as Promise<Profile>
+  const data = await response.json() as Profile
+  profileCache.set(identity, { savedAt: Date.now(), data })
+  writeSessionCache(`bindit:profile:${identity}`, data)
+  return data
 }
 
 export function recordDailyLogin(studentId: string, accessToken?: string) {
@@ -228,8 +297,49 @@ export function saveAccountProfile(
   }, accessToken)
 }
 
-export function getFriends(accessToken: string) {
-  return request<FriendsHub>('/api/friends', undefined, accessToken)
+const socialCache = new Map<string, { savedAt: number; data: FriendsHub }>()
+const groupCache = new Map<string, { savedAt: number; data: StudyGroup[] }>()
+
+export function getCachedFriends(accessToken: string) {
+  const identity = tokenSubject(accessToken)
+  return socialCache.get(identity)?.data ?? readSessionCache<FriendsHub>(`bindit:social:${identity}`)?.data ?? null
+}
+
+export function getCachedStudyGroups(accessToken: string) {
+  const identity = tokenSubject(accessToken)
+  return groupCache.get(identity)?.data ?? readSessionCache<StudyGroup[]>(`bindit:groups:${identity}`)?.data ?? null
+}
+
+export async function getFriends(accessToken: string, force = false) {
+  const identity = tokenSubject(accessToken)
+  const cached = socialCache.get(identity) ?? readSessionCache<FriendsHub>(`bindit:social:${identity}`)
+  if (!force && cached && Date.now() - cached.savedAt < CACHE_WINDOW_MS) return cached.data
+  const data = await request<FriendsHub>('/api/friends', undefined, accessToken)
+  socialCache.set(identity, { savedAt: Date.now(), data })
+  writeSessionCache(`bindit:social:${identity}`, data)
+  return data
+}
+
+export async function getStudyGroups(accessToken: string, force = false) {
+  const identity = tokenSubject(accessToken)
+  const cached = groupCache.get(identity) ?? readSessionCache<StudyGroup[]>(`bindit:groups:${identity}`)
+  if (!force && cached && Date.now() - cached.savedAt < CACHE_WINDOW_MS) return cached.data
+  const data = await request<StudyGroup[]>('/api/study-groups', undefined, accessToken)
+  groupCache.set(identity, { savedAt: Date.now(), data })
+  writeSessionCache(`bindit:groups:${identity}`, data)
+  return data
+}
+
+export function createStudyGroup(group: { name: string; description: string; weekly_goal_xp: number }, accessToken: string) {
+  return request<StudyGroup>('/api/study-groups', { method: 'POST', body: JSON.stringify(group) }, accessToken)
+}
+
+export function joinStudyGroup(inviteCode: string, accessToken: string) {
+  return request<StudyGroup>('/api/study-groups/join', { method: 'POST', body: JSON.stringify({ invite_code: inviteCode }) }, accessToken)
+}
+
+export function leaveStudyGroup(groupId: string, accessToken: string) {
+  return request<{ left: boolean }>(`/api/study-groups/${encodeURIComponent(groupId)}/members/me`, { method: 'DELETE' }, accessToken)
 }
 
 export function sendFriendRequest(friendCode: string, accessToken: string) {

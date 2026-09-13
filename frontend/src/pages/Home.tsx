@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { getAccountProfile, getFriends, getProgress, type FriendsHub, type Profile, type Progress } from '../lib/api'
+import { getAccountProfile, getCachedFriends, getCachedProfile, getCachedProgress, getFriends, getProgress, type FriendsHub, type Profile, type Progress } from '../lib/api'
 import type { AuthSession } from '../lib/auth'
 import { getStudentId, loadNotebook } from '../lib/session'
 import './HomeScreen.css'
@@ -23,18 +23,20 @@ function HomeIcon({ name }: { name: HomeIconName }) {
 }
 
 export function Home({ session }: { session: AuthSession | null }) {
-  const [stats, setStats] = useState<Progress | null>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [social, setSocial] = useState<FriendsHub | null>(null)
-  const notebook = useMemo(() => loadNotebook(), [])
   const studentId = session?.user.id ?? getStudentId()
   const accessToken = session?.access_token
+  const [stats, setStats] = useState<Progress | null>(() => getCachedProgress(studentId))
+  const [profile, setProfile] = useState<Profile | null>(() => accessToken ? getCachedProfile(accessToken) : null)
+  const [social, setSocial] = useState<FriendsHub | null>(() => accessToken ? getCachedFriends(accessToken) : null)
+  const notebook = useMemo(() => loadNotebook(), [])
 
   useEffect(() => {
-    void getProgress(studentId, accessToken).then(setStats).catch(() => setStats(null))
+    void getProgress(studentId, accessToken, true).then(setStats).catch(() => undefined)
     if (accessToken) {
-      void getAccountProfile(accessToken).then(setProfile).catch(() => setProfile(null))
-      void getFriends(accessToken).then(setSocial).catch(() => setSocial(null))
+      void Promise.allSettled([
+        getAccountProfile(accessToken, true).then(setProfile),
+        getFriends(accessToken, true).then(setSocial),
+      ])
     }
   }, [studentId, accessToken])
 

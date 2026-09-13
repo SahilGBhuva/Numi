@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getProgress, type Progress as ProgressData } from '../lib/api'
+import { getCachedProgress, getProgress, type Progress as ProgressData } from '../lib/api'
 import type { AuthSession } from '../lib/auth'
 import {
   VERDICT_COPY,
@@ -20,7 +20,8 @@ type ProgressProps = {
 }
 
 export function Progress({ session }: ProgressProps) {
-  const [stats, setStats] = useState<ProgressData | null>(null)
+  const studentId = session?.user.id ?? getStudentId()
+  const [stats, setStats] = useState<ProgressData | null>(() => getCachedProgress(studentId))
   const [notebook, setNotebook] = useState(() => {
     const loaded = loadNotebook()
     return { ...loaded, courses: withCourseTones(loaded.courses) }
@@ -29,10 +30,9 @@ export function Progress({ session }: ProgressProps) {
   const [focusUnit, setFocusUnit] = useState('')
   const [hover, setHover] = useState<number | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
-  const studentId = session?.user.id ?? getStudentId()
 
   useEffect(() => {
-    void getProgress(studentId, session?.access_token).then(setStats).catch(() => setStats(null))
+    void getProgress(studentId, session?.access_token, true).then(setStats).catch(() => undefined)
   }, [studentId, session?.access_token])
 
   useEffect(() => {

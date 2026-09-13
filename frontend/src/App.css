@@ -18,14 +18,13 @@
 .sheet.is-profile { --page-accent: var(--accent-profile); }
 .sheet.is-settings { --page-accent: var(--accent-settings); }
 .sheet.is-more { --page-accent: var(--accent-more); }
+.sheet.is-profile .profile-page { border-color: transparent; }
 
 .sheet .board,
 .sheet .home__quote,
 .sheet.is-tools .courses,
 .sheet.is-tools .order-bar,
-.sheet.is-tools .panel,
-.sheet.is-profile .profile-main,
-.sheet.is-profile .profile-panels {
+.sheet.is-tools .panel {
   border-color: var(--page-accent);
 }
 

@@ -92,6 +92,37 @@ class FriendsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot_report_self"):
             database.report_person("alex-id", "alex-id", "spam")
 
+    def test_study_group_invite_members_and_weekly_progress(self):
+        group = database.create_study_group("alex-id", "Biology sprint", "Finish cell biology", 300)
+        self.assertEqual(group["role"], "owner")
+        self.assertEqual(len(group["members"]), 1)
+
+        joined = database.join_study_group("sam-id", group["invite_code"].lower())
+        self.assertEqual(joined["role"], "member")
+        self.assertEqual(len(joined["members"]), 2)
+
+        database.update_progress("alex-id", "Biology", True, 30)
+        database.update_progress("sam-id", "Biology", True, 20)
+        refreshed = database.list_study_groups("alex-id")[0]
+        self.assertEqual(refreshed["weekly_xp"], 50)
+        self.assertEqual([member["weekly_xp"] for member in refreshed["members"]], [30, 20])
+        self.assertEqual(len(refreshed["activity"]), 2)
+
+    def test_group_members_can_leave_but_owner_cannot(self):
+        group = database.create_study_group("alex-id", "Exam week")
+        database.join_study_group("sam-id", group["invite_code"])
+        self.assertTrue(database.leave_study_group("sam-id", group["id"]))
+        self.assertEqual(len(database.get_study_group("alex-id", group["id"])["members"]), 1)
+        with self.assertRaisesRegex(ValueError, "group_owner_cannot_leave"):
+            database.leave_study_group("alex-id", group["id"])
+
+    def test_group_endpoints_use_authenticated_identity(self):
+        with patch.object(main.auth, "authenticated_user", return_value={"id": "alex-id"}):
+            group = main.create_study_group(main.StudyGroupCreate(name="Calculus crew"), "Bearer test")
+        with patch.object(main.auth, "authenticated_user", return_value={"id": "sam-id"}):
+            joined = main.join_study_group(main.StudyGroupJoin(invite_code=group["invite_code"]), "Bearer test")
+        self.assertEqual(joined["members"][1]["student_id"], "sam-id")
+
 
 if __name__ == "__main__":
     unittest.main()

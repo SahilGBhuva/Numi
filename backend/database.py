@@ -80,6 +80,27 @@ friend_quests = Table(
     Column("expires_at", DateTime(timezone=True), nullable=False),
 )
 
+study_groups = Table(
+    "study_groups", metadata,
+    Column("id", String(32), primary_key=True),
+    Column("name", String(48), nullable=False),
+    Column("description", String(160), nullable=False, default=""),
+    Column("owner_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("invite_code", String(10), nullable=False, unique=True),
+    Column("weekly_goal_xp", Integer, nullable=False, default=500),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+study_group_members = Table(
+    "study_group_members", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("group_id", String(32), ForeignKey("study_groups.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("student_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("role", String(12), nullable=False, default="member"),
+    Column("joined_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("group_id", "student_id", name="uq_study_group_member"),
+)
+
 xp_events = Table(
     "xp_events", metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
@@ -215,7 +236,7 @@ def engine() -> Engine:
         if os.getenv("VERCEL"):
             # Keep one connection alive inside a warm serverless instance. The
             # Supabase transaction pooler safely multiplexes these small pools.
-            kwargs.update(pool_size=1, max_overflow=1, pool_recycle=300)
+            kwargs.update(pool_size=2, max_overflow=2, pool_recycle=300)
     return create_engine(url, **kwargs)
 
 
@@ -805,6 +826,148 @@ def _friend_streak(first_id: str, second_id: str) -> int:
     return streak
 
 
+def _new_group_invite_code(connection) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    for _ in range(12):
+        code = "".join(secrets.choice(alphabet) for _ in range(8))
+        if not connection.execute(select(study_groups.c.id).where(study_groups.c.invite_code == code)).first():
+            return code
+    raise RuntimeError("Could not generate a unique group invite code")
+
+
+def create_study_group(student_id: str, name: str, description: str = "", weekly_goal_xp: int = 500) -> dict:
+    init_db()
+    clean_name = " ".join(name.split())
+    clean_description = " ".join(description.split())
+    if not 2 <= len(clean_name) <= 48:
+        raise ValueError("invalid_group_name")
+    if not 100 <= weekly_goal_xp <= 10000:
+        raise ValueError("invalid_group_goal")
+    with engine().begin() as connection:
+        if not connection.execute(select(profiles.c.student_id).where(profiles.c.student_id == student_id)).first():
+            raise ValueError("profile_not_found")
+        membership_count = connection.execute(select(func.count()).select_from(study_group_members).where(
+            study_group_members.c.student_id == student_id,
+        )).scalar_one()
+        if membership_count >= 8:
+            raise ValueError("group_limit_reached")
+        now = datetime.now(timezone.utc)
+        group_id = secrets.token_hex(16)
+        connection.execute(study_groups.insert().values(
+            id=group_id, name=clean_name, description=clean_description[:160], owner_id=student_id,
+            invite_code=_new_group_invite_code(connection), weekly_goal_xp=weekly_goal_xp, created_at=now,
+        ))
+        connection.execute(study_group_members.insert().values(
+            group_id=group_id, student_id=student_id, role="owner", joined_at=now,
+        ))
+    return get_study_group(student_id, group_id)
+
+
+def join_study_group(student_id: str, invite_code: str) -> dict:
+    init_db()
+    code = invite_code.strip().upper()
+    with engine().begin() as connection:
+        group = connection.execute(select(study_groups).where(study_groups.c.invite_code == code)).mappings().first()
+        if not group:
+            raise ValueError("group_not_found")
+        if connection.execute(select(study_group_members.c.id).where(
+            study_group_members.c.group_id == group["id"], study_group_members.c.student_id == student_id,
+        )).first():
+            raise ValueError("already_in_group")
+        group_size = connection.execute(select(func.count()).select_from(study_group_members).where(
+            study_group_members.c.group_id == group["id"],
+        )).scalar_one()
+        if group_size >= 20:
+            raise ValueError("group_full")
+        membership_count = connection.execute(select(func.count()).select_from(study_group_members).where(
+            study_group_members.c.student_id == student_id,
+        )).scalar_one()
+        if membership_count >= 8:
+            raise ValueError("group_limit_reached")
+        now = datetime.now(timezone.utc)
+        connection.execute(study_group_members.insert().values(
+            group_id=group["id"], student_id=student_id, role="member", joined_at=now,
+        ))
+        display_name = connection.execute(select(profiles.c.display_name).where(profiles.c.student_id == student_id)).scalar_one()
+        member_ids = connection.execute(select(study_group_members.c.student_id).where(
+            study_group_members.c.group_id == group["id"], study_group_members.c.student_id != student_id,
+        )).scalars().all()
+        if member_ids:
+            connection.execute(social_notifications.insert(), [{
+                "recipient_id": member_id, "actor_id": student_id, "kind": "group_joined",
+                "message": f"{display_name} joined {group['name']}.", "is_read": False, "created_at": now,
+            } for member_id in member_ids])
+    return get_study_group(student_id, group["id"])
+
+
+def _study_group_result(connection, student_id: str, group: dict) -> dict:
+    membership = connection.execute(select(study_group_members.c.role).where(
+        study_group_members.c.group_id == group["id"], study_group_members.c.student_id == student_id,
+    )).scalar_one_or_none()
+    if membership is None:
+        raise ValueError("group_not_found")
+    today_utc = datetime.now(timezone.utc).date()
+    week_start = datetime.combine(today_utc - timedelta(days=today_utc.weekday()), datetime.min.time(), tzinfo=timezone.utc)
+    weekly = select(
+        xp_events.c.student_id, func.sum(xp_events.c.xp).label("weekly_xp"),
+    ).where(xp_events.c.created_at >= week_start).group_by(xp_events.c.student_id).subquery()
+    members = connection.execute(select(
+        profiles.c.student_id, profiles.c.username, profiles.c.display_name, profiles.c.avatar_path,
+        study_group_members.c.role, study_group_members.c.joined_at,
+        func.coalesce(weekly.c.weekly_xp, 0).label("weekly_xp"),
+    ).join(study_group_members, profiles.c.student_id == study_group_members.c.student_id)
+      .outerjoin(weekly, profiles.c.student_id == weekly.c.student_id)
+      .where(study_group_members.c.group_id == group["id"])
+      .order_by(func.coalesce(weekly.c.weekly_xp, 0).desc(), profiles.c.display_name.asc())).mappings().all()
+    member_ids = [member["student_id"] for member in members]
+    activity = connection.execute(select(
+        xp_events.c.id, xp_events.c.student_id, xp_events.c.xp, xp_events.c.created_at,
+        profiles.c.display_name,
+    ).join(profiles, profiles.c.student_id == xp_events.c.student_id)
+      .where(xp_events.c.student_id.in_(member_ids))
+      .order_by(xp_events.c.created_at.desc()).limit(8)).mappings().all() if member_ids else []
+    weekly_xp = sum(int(member["weekly_xp"] or 0) for member in members)
+    return {
+        "id": group["id"], "name": group["name"], "description": group["description"],
+        "invite_code": group["invite_code"], "weekly_goal_xp": group["weekly_goal_xp"],
+        "weekly_xp": weekly_xp, "role": membership, "created_at": group["created_at"],
+        "members": [dict(member) for member in members], "activity": [dict(item) for item in activity],
+    }
+
+
+def get_study_group(student_id: str, group_id: str) -> dict:
+    init_db()
+    with engine().connect() as connection:
+        group = connection.execute(select(study_groups).where(study_groups.c.id == group_id)).mappings().first()
+        if not group:
+            raise ValueError("group_not_found")
+        return _study_group_result(connection, student_id, group)
+
+
+def list_study_groups(student_id: str) -> list[dict]:
+    init_db()
+    with engine().connect() as connection:
+        groups = connection.execute(select(study_groups).join(
+            study_group_members, study_groups.c.id == study_group_members.c.group_id,
+        ).where(study_group_members.c.student_id == student_id)
+          .order_by(study_group_members.c.joined_at.desc())).mappings().all()
+        return [_study_group_result(connection, student_id, group) for group in groups]
+
+
+def leave_study_group(student_id: str, group_id: str) -> bool:
+    init_db()
+    with engine().begin() as connection:
+        membership = connection.execute(select(study_group_members).where(
+            study_group_members.c.group_id == group_id, study_group_members.c.student_id == student_id,
+        )).mappings().first()
+        if not membership:
+            raise ValueError("group_not_found")
+        if membership["role"] == "owner":
+            raise ValueError("group_owner_cannot_leave")
+        result = connection.execute(delete(study_group_members).where(study_group_members.c.id == membership["id"]))
+    return bool(result.rowcount)
+
+
 def remove_friend(student_id: str, friend_id: str) -> bool:
     init_db()
     with engine().begin() as connection:
@@ -1057,6 +1220,8 @@ def reset_db() -> None:
         raise RuntimeError("reset_db is only available for local SQLite databases")
     with active_engine.begin() as connection:
         connection.execute(delete(uploaded_images))
+        connection.execute(delete(study_group_members))
+        connection.execute(delete(study_groups))
         connection.execute(delete(social_action_events))
         connection.execute(delete(social_reports))
         connection.execute(delete(social_notifications))

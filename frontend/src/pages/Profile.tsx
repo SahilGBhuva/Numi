@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { answerFriendRequest, blockSocialUser, getAccountProfile, getFriends, getProgress, reactToActivity, readSocialNotifications, removeFriend, reportSocialUser, saveSocialPrivacy, searchFriends, sendFriendRequest, startFriendQuest, type FriendsHub, type PersonSuggestion, type Profile as ProfileData, type Progress as ProgressData } from '../lib/api'
+import { answerFriendRequest, blockSocialUser, createStudyGroup, getAccountProfile, getCachedFriends, getCachedProfile, getCachedProgress, getCachedStudyGroups, getFriends, getProgress, getStudyGroups, joinStudyGroup, leaveStudyGroup, reactToActivity, readSocialNotifications, removeFriend, reportSocialUser, saveSocialPrivacy, searchFriends, sendFriendRequest, startFriendQuest, type FriendsHub, type PersonSuggestion, type Profile as ProfileData, type Progress as ProgressData, type StudyGroup } from '../lib/api'
 import type { AuthSession } from '../lib/auth'
 import { getStudentId, loadNotebook } from '../lib/session'
 import type { Course } from '../lib/types'
@@ -26,20 +26,26 @@ type ProfileProps = {
 }
 
 export function Profile({ session, onError }: ProfileProps) {
-  const [profile, setProfile] = useState<ProfileData | null>(null)
-  const [stats, setStats] = useState<ProgressData | null>(null)
+  const studentId = session?.user.id ?? getStudentId()
+  const [profile, setProfile] = useState<ProfileData | null>(() => session ? getCachedProfile(session.access_token) : null)
+  const [stats, setStats] = useState<ProgressData | null>(() => getCachedProgress(studentId))
   const [courses, setCourses] = useState<Course[]>(() => loadNotebook().courses)
   const [activeCourse, setActiveCourse] = useState(() => loadNotebook().activeCourse)
-  const [social, setSocial] = useState<FriendsHub | null>(null)
+  const [social, setSocial] = useState<FriendsHub | null>(() => session ? getCachedFriends(session.access_token) : null)
+  const [groups, setGroups] = useState<StudyGroup[]>(() => session ? getCachedStudyGroups(session.access_token) ?? [] : [])
+  const [activeGroupId, setActiveGroupId] = useState('')
+  const [showGroupSetup, setShowGroupSetup] = useState(false)
+  const [groupName, setGroupName] = useState('')
+  const [groupDescription, setGroupDescription] = useState('')
+  const [groupCode, setGroupCode] = useState('')
   const [friendCode, setFriendCode] = useState('')
   const [socialBusy, setSocialBusy] = useState(false)
   const [socialMessage, setSocialMessage] = useState('')
   const [peopleQuery, setPeopleQuery] = useState('')
   const [peopleResults, setPeopleResults] = useState<PersonSuggestion[]>([])
-  const studentId = session?.user.id ?? getStudentId()
 
   useEffect(() => {
-    void getProgress(studentId, session?.access_token)
+    void getProgress(studentId, session?.access_token, true)
       .then(setStats)
       .catch(() => setStats(null))
   }, [studentId, session?.access_token])
@@ -49,23 +55,42 @@ export function Profile({ session, onError }: ProfileProps) {
       setProfile(null)
       return
     }
-    void getAccountProfile(session.access_token)
+    void getAccountProfile(session.access_token, true)
       .then(setProfile)
       .catch(() => onError?.('Could not load your profile.'))
   }, [session, onError])
 
-  async function refreshFriends() {
+  const refreshSocial = useCallback(async (force = true) => {
     if (!session) return
-    try {
-      setSocial(await getFriends(session.access_token))
-    } catch {
+    const [friendsResult, groupsResult] = await Promise.allSettled([
+      getFriends(session.access_token, force),
+      getStudyGroups(session.access_token, force),
+    ])
+    if (friendsResult.status === 'fulfilled') setSocial(friendsResult.value)
+    else {
       onError?.('Could not load friends right now.')
     }
-  }
+    if (groupsResult.status === 'fulfilled') {
+      setGroups(groupsResult.value)
+      setActiveGroupId((current) => current || groupsResult.value[0]?.id || '')
+    }
+  }, [session, onError])
 
   useEffect(() => {
-    void refreshFriends()
-  }, [session?.access_token])
+    if (!session) {
+      setSocial(null)
+      setGroups([])
+      return
+    }
+    const cachedFriends = getCachedFriends(session.access_token)
+    const cachedGroups = getCachedStudyGroups(session.access_token)
+    if (cachedFriends) setSocial(cachedFriends)
+    if (cachedGroups) {
+      setGroups(cachedGroups)
+      setActiveGroupId((current) => current || cachedGroups[0]?.id || '')
+    }
+    void refreshSocial(true)
+  }, [session, refreshSocial])
 
   async function addFriend(event: FormEvent) {
     event.preventDefault()
@@ -76,7 +101,7 @@ export function Profile({ session, onError }: ProfileProps) {
       await sendFriendRequest(friendCode.trim(), session.access_token)
       setFriendCode('')
       setSocialMessage('Friend request sent!')
-      await refreshFriends()
+      await refreshSocial()
     } catch (error) {
       setSocialMessage(error instanceof Error ? error.message : 'Could not send that request.')
     } finally {
@@ -102,7 +127,7 @@ export function Profile({ session, onError }: ProfileProps) {
       await sendFriendRequest(person.friend_code, session.access_token)
       setPeopleResults((current) => current.filter((item) => item.student_id !== person.student_id))
       setSocialMessage(`Friend request sent to ${person.display_name}.`)
-      await refreshFriends()
+      await refreshSocial()
     } finally {
       setSocialBusy(false)
     }
@@ -125,14 +150,24 @@ export function Profile({ session, onError }: ProfileProps) {
 
   async function celebrate(eventId: number) {
     if (!session) return
-    await reactToActivity(eventId, session.access_token)
-    await refreshFriends()
+    setSocial((current) => current ? {
+      ...current,
+      activity: current.activity.map((item) => item.id === eventId ? {
+        ...item, reacted: !item.reacted, reaction_count: Math.max(0, item.reaction_count + (item.reacted ? -1 : 1)),
+      } : item),
+    } : current)
+    try {
+      await reactToActivity(eventId, session.access_token)
+    } catch {
+      await refreshSocial()
+    }
   }
 
   async function markNotificationsRead() {
     if (!session) return
     await readSocialNotifications(session.access_token)
-    await refreshFriends()
+    setSocial((current) => current ? { ...current, notifications: current.notifications.map((item) => ({ ...item, is_read: true })) } : current)
+    void refreshSocial()
   }
 
   async function togglePrivacy(field: 'discoverable' | 'allow_friend_requests') {
@@ -147,7 +182,7 @@ export function Profile({ session, onError }: ProfileProps) {
     if (!session || !window.confirm('Block this person? They will be removed and unable to find or contact you.')) return
     await blockSocialUser(friendId, session.access_token)
     setSocialMessage('Person blocked.')
-    await refreshFriends()
+    await refreshSocial()
   }
 
   async function reportFriend(friendId: string) {
@@ -162,7 +197,7 @@ export function Profile({ session, onError }: ProfileProps) {
     try {
       await answerFriendRequest(requestId, accept, session.access_token)
       setSocialMessage(accept ? 'You are friends now!' : 'Request declined.')
-      await refreshFriends()
+      await refreshSocial()
     } finally {
       setSocialBusy(false)
     }
@@ -174,7 +209,7 @@ export function Profile({ session, onError }: ProfileProps) {
     try {
       await startFriendQuest(friendId, session.access_token)
       setSocialMessage('Friend Quest started — earn 100 XP together this week!')
-      await refreshFriends()
+      await refreshSocial()
     } finally {
       setSocialBusy(false)
     }
@@ -186,10 +221,64 @@ export function Profile({ session, onError }: ProfileProps) {
     try {
       await removeFriend(friendId, session.access_token)
       setSocialMessage('Friend removed.')
-      await refreshFriends()
+      await refreshSocial()
     } finally {
       setSocialBusy(false)
     }
+  }
+
+  async function makeGroup(event: FormEvent) {
+    event.preventDefault()
+    if (!session || groupName.trim().length < 2) return
+    setSocialBusy(true)
+    setSocialMessage('')
+    try {
+      const group = await createStudyGroup({ name: groupName.trim(), description: groupDescription.trim(), weekly_goal_xp: 500 }, session.access_token)
+      setGroups((current) => [group, ...current])
+      setActiveGroupId(group.id)
+      setGroupName('')
+      setGroupDescription('')
+      setShowGroupSetup(false)
+      setSocialMessage(`${group.name} is ready. Share code ${group.invite_code} with your friends.`)
+      void refreshSocial()
+    } catch (error) {
+      setSocialMessage(error instanceof Error ? error.message : 'Could not create that group.')
+    } finally {
+      setSocialBusy(false)
+    }
+  }
+
+  async function joinGroup(event: FormEvent) {
+    event.preventDefault()
+    if (!session || groupCode.trim().length < 6) return
+    setSocialBusy(true)
+    setSocialMessage('')
+    try {
+      const group = await joinStudyGroup(groupCode.trim(), session.access_token)
+      setGroups((current) => [group, ...current.filter((item) => item.id !== group.id)])
+      setActiveGroupId(group.id)
+      setGroupCode('')
+      setShowGroupSetup(false)
+      setSocialMessage(`Joined ${group.name}.`)
+      void refreshSocial()
+    } catch (error) {
+      setSocialMessage(error instanceof Error ? error.message : 'Could not join that group.')
+    } finally {
+      setSocialBusy(false)
+    }
+  }
+
+  async function copyGroupCode(code: string) {
+    await navigator.clipboard.writeText(code)
+    setSocialMessage('Group invite code copied.')
+  }
+
+  async function exitGroup(group: StudyGroup) {
+    if (!session || group.role === 'owner' || !window.confirm(`Leave ${group.name}?`)) return
+    await leaveStudyGroup(group.id, session.access_token)
+    setGroups((current) => current.filter((item) => item.id !== group.id))
+    setActiveGroupId('')
+    setSocialMessage(`Left ${group.name}.`)
   }
 
   useEffect(() => {
@@ -213,6 +302,7 @@ export function Profile({ session, onError }: ProfileProps) {
   const unitStats = stats?.topics ?? []
   const username = profile?.username ?? 'Guest'
   const tag = profile?.friend_code ?? '—'
+  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? groups[0] ?? null
 
   return (
     <section className="board profile-page">
@@ -317,6 +407,73 @@ export function Profile({ session, onError }: ProfileProps) {
         </div>
 
         <aside className="profile-panels">
+          <section className="profile-panel-section study-groups" aria-labelledby="study-groups-title">
+            <div className="panel-heading study-groups__heading">
+              <div>
+                <p className="social-eyebrow">Shared workspace</p>
+                <h2 id="study-groups-title">Study groups</h2>
+              </div>
+              {session ? <button type="button" onClick={() => setShowGroupSetup((current) => !current)}>{showGroupSetup ? 'Close' : 'New group'}</button> : null}
+            </div>
+
+            {showGroupSetup ? (
+              <div className="group-setup">
+                <form onSubmit={makeGroup}>
+                  <strong>Create a focused group</strong>
+                  <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="Group name" maxLength={48} aria-label="Group name" />
+                  <input value={groupDescription} onChange={(event) => setGroupDescription(event.target.value)} placeholder="What are you studying?" maxLength={160} aria-label="Group description" />
+                  <button disabled={socialBusy || groupName.trim().length < 2}>Create group</button>
+                </form>
+                <span>or</span>
+                <form onSubmit={joinGroup}>
+                  <strong>Join with a code</strong>
+                  <input value={groupCode} onChange={(event) => setGroupCode(event.target.value.toUpperCase())} placeholder="8-character code" maxLength={10} aria-label="Study group invite code" />
+                  <button disabled={socialBusy || groupCode.trim().length < 6}>Join group</button>
+                </form>
+              </div>
+            ) : null}
+
+            {groups.length ? (
+              <>
+                <div className="group-switcher" role="tablist" aria-label="Your study groups">
+                  {groups.map((group) => <button key={group.id} type="button" role="tab" aria-selected={activeGroup?.id === group.id} className={activeGroup?.id === group.id ? 'is-active' : ''} onClick={() => setActiveGroupId(group.id)}>{group.name}<span>{group.members.length}</span></button>)}
+                </div>
+                {activeGroup ? (
+                  <div className="group-workspace">
+                    <div className="group-workspace__topline">
+                      <div><h3>{activeGroup.name}</h3><p>{activeGroup.description || 'A private place to keep each other moving.'}</p></div>
+                      <button type="button" className="group-code" onClick={() => void copyGroupCode(activeGroup.invite_code)}><small>Invite</small>{activeGroup.invite_code}</button>
+                    </div>
+                    <div className="group-goal">
+                      <div><span>Weekly group goal</span><strong>{activeGroup.weekly_xp} / {activeGroup.weekly_goal_xp} XP</strong></div>
+                      <div className="group-goal__track" role="progressbar" aria-label={`${activeGroup.name} weekly XP`} aria-valuemin={0} aria-valuemax={activeGroup.weekly_goal_xp} aria-valuenow={Math.min(activeGroup.weekly_xp, activeGroup.weekly_goal_xp)}><span style={{ width: `${Math.min(100, activeGroup.weekly_xp / activeGroup.weekly_goal_xp * 100)}%` }} /></div>
+                    </div>
+                    <div className="group-columns">
+                      <div>
+                        <p className="group-label">Members</p>
+                        <ol className="group-members">
+                          {activeGroup.members.map((member, index) => <li key={member.student_id}><span className="member-rank">{index + 1}</span><span className="friend-face">{member.display_name.slice(0, 1).toUpperCase()}</span><span><strong>{member.student_id === studentId ? 'You' : member.display_name}</strong><small>{member.role === 'owner' ? 'Group owner' : `@${member.username}`}</small></span><b>{member.weekly_xp} XP</b></li>)}
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="group-label">Recent momentum</p>
+                        <div className="group-activity">
+                          {activeGroup.activity.slice(0, 5).map((item) => <p key={item.id}><span>{item.display_name}</span><strong>+{item.xp} XP</strong><small>{new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small></p>)}
+                          {!activeGroup.activity.length ? <p className="profile-panel__empty">Complete a lesson to start the feed.</p> : null}
+                        </div>
+                      </div>
+                    </div>
+                    {activeGroup.role !== 'owner' ? <button type="button" className="group-leave" onClick={() => void exitGroup(activeGroup)}>Leave group</button> : null}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <button type="button" className="group-empty" onClick={() => setShowGroupSetup(true)} disabled={!session}>
+                <span>＋</span><strong>Create your first study group</strong><small>Invite friends, combine XP, and build momentum together.</small>
+              </button>
+            )}
+          </section>
+
           <section className="profile-panel-section social-league">
             <div className="panel-heading"><h2>Weekly League</h2><span>Resets Monday</span></div>
             {!social?.leaderboard.length ? <p className="profile-panel__empty">Add a friend to start your weekly competition.</p> : (

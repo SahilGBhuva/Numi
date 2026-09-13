@@ -1,6 +1,6 @@
 :root {
-  --ink: #e8dfb0;
-  --muted: #b8af82;
+  --ink: #e6e8ec;
+  --muted: #9299a6;
   --wash: #08121e;
   --paper: #07111c;
   --surface: #0a1626;
@@ -20,13 +20,9 @@
   --accent-settings: #c8bf8a;
   --accent-more: #a78bfa;
   --page-accent: var(--ink);
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ink);
-  background:
-    radial-gradient(ellipse at 12% 8%, #102438 0, transparent 36%),
-    radial-gradient(ellipse at 88% 0%, #0c1c30 0, transparent 32%),
-    radial-gradient(ellipse at 70% 90%, #0a1828 0, transparent 40%),
-    var(--paper);
+  background: #07111c;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }

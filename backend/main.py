@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -18,10 +19,12 @@ import note_ingestion
 import note_store
 
 app = FastAPI(
-    title="bindet API",
+    title="Bindit API",
     version="1.2.0",
     description="Practice, accounts, profiles, secure progress tracking, personalized quizzes, AI flashcards, and AI tutoring.",
 )
+
+social_reads = ThreadPoolExecutor(max_workers=4, thread_name_prefix="bindit-social")
 
 app.add_middleware(
     CORSMiddleware,
@@ -194,6 +197,16 @@ class FriendRequestDecision(BaseModel):
 class FriendQuestCreate(BaseModel):
     friend_id: str = Field(min_length=1, max_length=100)
     target_xp: int = Field(default=100, ge=50, le=1000)
+
+
+class StudyGroupCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=48)
+    description: str = Field(default="", max_length=160)
+    weekly_goal_xp: int = Field(default=500, ge=100, le=10000)
+
+
+class StudyGroupJoin(BaseModel):
+    invite_code: str = Field(min_length=6, max_length=10)
 
 
 class SocialPrivacyUpdate(BaseModel):
@@ -403,6 +416,13 @@ def social_error(error: ValueError) -> HTTPException:
         "cannot_block_self": (400, "You cannot block yourself"),
         "cannot_report_self": (400, "You cannot report yourself"),
         "social_rate_limited": (429, "You’re doing that too quickly. Please wait and try again."),
+        "invalid_group_name": (400, "Group names must be between 2 and 48 characters"),
+        "invalid_group_goal": (400, "The weekly group goal must be between 100 and 10,000 XP"),
+        "group_not_found": (404, "That study group could not be found"),
+        "already_in_group": (409, "You are already in that study group"),
+        "group_full": (409, "That study group already has 20 members"),
+        "group_limit_reached": (409, "You can join up to 8 study groups"),
+        "group_owner_cannot_leave": (409, "Group owners cannot leave their group"),
     }
     status, message = messages.get(str(error), (400, "Could not update that profile"))
     return HTTPException(status_code=status, detail=message)
@@ -520,15 +540,57 @@ def get_account_profile(authorization: Annotated[str | None, Header()] = None):
 @app.get("/api/friends")
 def get_friends(authorization: Annotated[str | None, Header()] = None):
     user = auth.authenticated_user(authorization)
-    return {
-        "friends": database.list_friends(user["id"]),
-        "requests": database.pending_friend_requests(user["id"]),
-        "leaderboard": database.friend_leaderboard(user["id"]),
-        "quests": database.active_friend_quests(user["id"]),
-        "suggestions": database.suggested_people(user["id"]),
-        "activity": database.activity_feed(user["id"]),
-        "notifications": database.notifications_for(user["id"]),
+    student_id = user["id"]
+    readers = {
+        "friends": database.list_friends,
+        "requests": database.pending_friend_requests,
+        "leaderboard": database.friend_leaderboard,
+        "quests": database.active_friend_quests,
+        "suggestions": database.suggested_people,
+        "activity": database.activity_feed,
+        "notifications": database.notifications_for,
     }
+    pending = {name: social_reads.submit(reader, student_id) for name, reader in readers.items()}
+    return {
+        name: future.result() for name, future in pending.items()
+    }
+
+
+@app.get("/api/study-groups")
+def get_study_groups(authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    return database.list_study_groups(user["id"])
+
+
+@app.post("/api/study-groups", status_code=201)
+def create_study_group(data: StudyGroupCreate, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "group_create", 8, 1440)
+        return database.create_study_group(user["id"], data.name, data.description, data.weekly_goal_xp)
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.post("/api/study-groups/join")
+def join_study_group(data: StudyGroupJoin, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "group_join", 20, 1440)
+        return database.join_study_group(user["id"], data.invite_code)
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.delete("/api/study-groups/{group_id}/members/me")
+def leave_study_group(group_id: str, authorization: Annotated[str | None, Header()] = None):
+    user = auth.authenticated_user(authorization)
+    try:
+        database.check_social_rate_limit(user["id"], "group_leave", 20, 1440)
+        database.leave_study_group(user["id"], group_id)
+    except ValueError as error:
+        raise social_error(error) from error
+    return {"left": True}
 
 
 @app.get("/api/friends/search")
