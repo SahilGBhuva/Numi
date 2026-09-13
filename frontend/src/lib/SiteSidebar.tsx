@@ -1,5 +1,7 @@
-import { WrenchMark } from './WrenchMark'
+import { useState } from 'react'
 import './SiteSidebar.css'
+
+const RAIL_KEY = 'bindet-rail-shut'
 
 export const SCREENS = ['home', 'tools', 'progress', 'games', 'goals', 'profile', 'settings', 'more'] as const
 export type Screen = (typeof SCREENS)[number]
@@ -9,7 +11,7 @@ const ITEMS: { id: Screen; label: string }[] = [
   { id: 'tools', label: 'Tools' },
   { id: 'progress', label: 'Progress' },
   { id: 'games', label: 'Games' },
-  { id: 'goals', label: 'Goals' },
+  { id: 'goals', label: 'Quests' },
   { id: 'profile', label: 'Profile' },
   { id: 'settings', label: 'Settings' },
   { id: 'more', label: 'More' },
@@ -26,7 +28,14 @@ function Mark({ kind }: { kind: Screen }) {
     )
   }
   if (kind === 'tools') {
-    return <WrenchMark variant="sidebar" className="wrench-mark wrench-mark--sidebar" />
+    return (
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path fill="#c45c3c" d="M4.8 9.6 8.6 6.2h14.2a2 2 0 0 1 2 2v6.2a2 2 0 0 1-2 2H19V28h-6V16.4H8.8z" />
+        <rect fill="#e0a045" x="13" y="16" width="6" height="12.2" rx="1.6" />
+        <rect fill="#f3d48a" x="24.4" y="7.4" width="3.4" height="7.4" rx="1.1" />
+        <rect fill="#f3e6c4" x="14.4" y="20.2" width="3.2" height="2" rx="0.8" />
+      </svg>
+    )
   }
   if (kind === 'progress') {
     return (
@@ -94,28 +103,51 @@ type SiteSidebarProps = {
 }
 
 export function SiteSidebar({ active }: SiteSidebarProps) {
+  const [shut, setShut] = useState(() => localStorage.getItem(RAIL_KEY) === '1')
+
+  function toggleRail() {
+    setShut((current) => {
+      const next = !current
+      localStorage.setItem(RAIL_KEY, next ? '1' : '0')
+      return next
+    })
+  }
+
   return (
-    <nav className="numi-rail" aria-label="Main">
+    <nav className={`numi-rail ${shut ? 'is-shut' : ''}`} aria-label="Main">
       <a className="numi-rail__brand" href="#home" aria-label="Bindet home">
         <img className="numi-rail__mark" src="/bindet-binder.png" alt="" />
-        bindet
+        <span className="numi-rail__word">bindet</span>
       </a>
-      <ol className="numi-rail__list">
+      <ol className="numi-rail__list" id="bindet-rail-list">
         {ITEMS.map((item) => (
           <li key={item.id}>
             <a
               className={`numi-rail__item is-${item.id} ${active === item.id ? 'is-active' : ''}`}
               href={`#${item.id}`}
               aria-current={active === item.id ? 'page' : undefined}
+              title={item.label}
             >
               <span className="numi-rail__icon">
                 <Mark kind={item.id} />
               </span>
               <span className="numi-rail__label">{item.label}</span>
+              <span className="numi-rail__ear" aria-hidden="true" />
             </a>
           </li>
         ))}
       </ol>
+      <button
+        className="numi-rail__snap"
+        type="button"
+        aria-expanded={!shut}
+        aria-controls="bindet-rail-list"
+        aria-label={shut ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={shut ? 'Expand' : 'Collapse'}
+        onClick={toggleRail}
+      >
+        <span className="numi-rail__strap" aria-hidden="true" />
+      </button>
     </nav>
   )
 }

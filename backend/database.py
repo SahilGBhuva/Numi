@@ -66,6 +66,18 @@ friendships = Table(
     UniqueConstraint("requester_id", "recipient_id", name="uq_friend_request_direction"),
 )
 
+friend_quests = Table(
+    "friend_quests", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("creator_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("partner_id", String(100), ForeignKey("profiles.student_id", ondelete="CASCADE"), nullable=False),
+    Column("target_xp", Integer, nullable=False, default=100),
+    Column("starting_xp", Integer, nullable=False, default=0),
+    Column("status", String(12), nullable=False, default="active"),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+)
+
 uploaded_images = Table(
     "uploaded_images", metadata,
     Column("id", String(36), primary_key=True),
@@ -630,6 +642,110 @@ def pending_friend_requests(student_id: str) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def list_friends(student_id: str) -> list[dict]:
+    init_db()
+    with engine().connect() as connection:
+        accepted = connection.execute(select(friendships).where(
+            friendships.c.status == "accepted",
+            or_(friendships.c.requester_id == student_id, friendships.c.recipient_id == student_id),
+        )).mappings().all()
+        friend_ids = [
+            row["recipient_id"] if row["requester_id"] == student_id else row["requester_id"]
+            for row in accepted
+        ]
+        if not friend_ids:
+            return []
+        rows = connection.execute(
+            select(
+                profiles.c.student_id, profiles.c.username, profiles.c.display_name, profiles.c.avatar_path,
+                student_progress.c.total_xp, student_progress.c.streak, student_progress.c.last_active_date,
+            ).join(student_progress, profiles.c.student_id == student_progress.c.student_id)
+            .where(profiles.c.student_id.in_(friend_ids))
+            .order_by(profiles.c.display_name.asc())
+        ).mappings().all()
+    today = date.today()
+    return [{**dict(row), "active_today": row["last_active_date"] == today} for row in rows]
+
+
+def remove_friend(student_id: str, friend_id: str) -> bool:
+    init_db()
+    with engine().begin() as connection:
+        result = connection.execute(delete(friendships).where(or_(
+            and_(friendships.c.requester_id == student_id, friendships.c.recipient_id == friend_id),
+            and_(friendships.c.requester_id == friend_id, friendships.c.recipient_id == student_id),
+        )))
+    return bool(result.rowcount)
+
+
+def create_friend_quest(student_id: str, friend_id: str, target_xp: int = 100) -> dict:
+    init_db()
+    if not 50 <= target_xp <= 1000:
+        raise ValueError("invalid_quest_target")
+    with engine().begin() as connection:
+        friendship = connection.execute(select(friendships).where(
+            friendships.c.status == "accepted",
+            or_(
+                and_(friendships.c.requester_id == student_id, friendships.c.recipient_id == friend_id),
+                and_(friendships.c.requester_id == friend_id, friendships.c.recipient_id == student_id),
+            ),
+        )).first()
+        if not friendship:
+            raise ValueError("friend_not_found")
+        existing = connection.execute(select(friend_quests).where(
+            friend_quests.c.status == "active",
+            or_(
+                and_(friend_quests.c.creator_id == student_id, friend_quests.c.partner_id == friend_id),
+                and_(friend_quests.c.creator_id == friend_id, friend_quests.c.partner_id == student_id),
+            ),
+        )).mappings().first()
+        if existing:
+            return _quest_result(connection, existing, student_id)
+        total = connection.execute(select(student_progress.c.total_xp).where(
+            student_progress.c.student_id.in_([student_id, friend_id])
+        )).scalars().all()
+        now = datetime.now(timezone.utc)
+        result = connection.execute(friend_quests.insert().values(
+            creator_id=student_id, partner_id=friend_id, target_xp=target_xp,
+            starting_xp=sum(total), status="active", created_at=now, expires_at=now + timedelta(days=7),
+        ))
+        row = connection.execute(select(friend_quests).where(friend_quests.c.id == result.inserted_primary_key[0])).mappings().one()
+        return _quest_result(connection, row, student_id)
+
+
+def _quest_result(connection, row: dict, student_id: str) -> dict:
+    ids = [row["creator_id"], row["partner_id"]]
+    profiles_by_id = {item["student_id"]: item for item in connection.execute(
+        select(profiles.c.student_id, profiles.c.display_name, profiles.c.username).where(profiles.c.student_id.in_(ids))
+    ).mappings().all()}
+    total = sum(connection.execute(select(student_progress.c.total_xp).where(student_progress.c.student_id.in_(ids))).scalars().all())
+    progress = max(0, total - row["starting_xp"])
+    expires_at = row["expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    status = "complete" if progress >= row["target_xp"] else ("expired" if expires_at < datetime.now(timezone.utc) else row["status"])
+    friend_id = row["partner_id"] if row["creator_id"] == student_id else row["creator_id"]
+    friend = profiles_by_id.get(friend_id, {})
+    return {
+        "id": row["id"],
+        "friend_id": friend_id,
+        "friend_name": friend.get("display_name") or friend.get("username") or "Friend",
+        "target_xp": row["target_xp"],
+        "progress_xp": min(progress, row["target_xp"]),
+        "status": status,
+        "expires_at": expires_at,
+    }
+
+
+def active_friend_quests(student_id: str) -> list[dict]:
+    init_db()
+    with engine().connect() as connection:
+        rows = connection.execute(select(friend_quests).where(
+            or_(friend_quests.c.creator_id == student_id, friend_quests.c.partner_id == student_id),
+            friend_quests.c.status == "active",
+        ).order_by(friend_quests.c.created_at.desc())).mappings().all()
+        return [_quest_result(connection, row, student_id) for row in rows]
+
+
 def friend_leaderboard(student_id: str) -> list[dict]:
     init_db()
     with engine().connect() as connection:
@@ -669,6 +785,7 @@ def reset_db() -> None:
         raise RuntimeError("reset_db is only available for local SQLite databases")
     with active_engine.begin() as connection:
         connection.execute(delete(uploaded_images))
+        connection.execute(delete(friend_quests))
         connection.execute(delete(friendships))
         connection.execute(delete(profiles))
         connection.execute(delete(progress_claims))

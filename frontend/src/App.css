@@ -5,6 +5,11 @@
   grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
   align-items: start;
+  transition: grid-template-columns 0.42s cubic-bezier(0.22, 1.2, 0.32, 1);
+}
+
+.app-shell:has(.numi-rail.is-shut) {
+  grid-template-columns: 88px minmax(0, 1fr);
 }
 
 .sheet.is-home { --page-accent: var(--accent-home); }
@@ -18,8 +23,6 @@
 
 .sheet .board,
 .sheet .home__quote,
-.sheet.is-tools .courses,
-.sheet.is-tools .order-bar,
 .sheet.is-tools .panel,
 .sheet.is-profile .profile-main,
 .sheet.is-profile .profile-panels {
@@ -27,7 +30,8 @@
 }
 
 @media (max-width: 860px) {
-  .app-shell {
+  .app-shell,
+  .app-shell:has(.numi-rail.is-shut) {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
   }

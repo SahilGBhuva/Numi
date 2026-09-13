@@ -2,17 +2,24 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
 import { analyzeAnswer, generateQuestion, type AnswerResult, type GeneratedQuestion, type Topic } from '../lib/api'
 import { recordUnitAttempt } from '../lib/progress'
+import { CourseCalendar } from '../components/CourseCalendar'
+import { NoteLectern } from '../components/NoteLectern'
 import {
   fileToCourseImageDataUrl,
   getStudentId,
   loadNotebook,
   notesFor,
+  COURSE_TONES,
   pickCourseTone,
+  removePlannerForCourse,
+  renamePlannerCourse,
   saveNotebook,
+  stashedUnitsFor,
   unitsFor,
   withCourseTones,
 } from '../lib/session'
 import type { Course, NoteDeposit } from '../lib/types'
+import { createPortal } from 'react-dom'
 import './Home.css'
 
 const QUIZ_TOPICS: { id: Topic; label: string }[] = [
@@ -51,14 +58,46 @@ function courseTone(course: { name: string; tone?: string }) {
 }
 
 function courseLookStyle(course: { name: string; tone?: string; image?: string }): CSSProperties {
-  const tone = courseTone(course)
-  if (!course.image) return { backgroundColor: tone }
+  return { backgroundColor: courseTone(course) }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function coverFrame(course: { coverX?: number; coverY?: number; coverZoom?: number }) {
   return {
-    backgroundColor: tone,
-    backgroundImage: `linear-gradient(180deg, rgba(8, 16, 26, 0.08), rgba(8, 16, 26, 0.62)), url("${course.image}")`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
+    x: course.coverX ?? 50,
+    y: course.coverY ?? 50,
+    zoom: course.coverZoom ?? 1,
   }
+}
+
+function CourseCover({
+  src,
+  x = 50,
+  y = 50,
+  zoom = 1,
+}: {
+  src?: string
+  x?: number
+  y?: number
+  zoom?: number
+}) {
+  if (!src) return null
+  return (
+    <img
+      className="course-card__cover"
+      src={src}
+      alt=""
+      draggable={false}
+      style={{
+        objectPosition: `${x}% ${y}%`,
+        transform: zoom === 1 ? undefined : `scale(${zoom})`,
+        transformOrigin: `${x}% ${y}%`,
+      }}
+    />
+  )
 }
 
 function GripMark() {
@@ -169,13 +208,19 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   const [swipe, setSwipe] = useState<'idle' | 'next' | 'prev'>('idle')
   const swipeLock = useRef(false)
   const fileInput = useRef<HTMLInputElement>(null)
-  const pagesRef = useRef<HTMLDivElement>(null)
   const coursePagesRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLElement>(null)
   const skipCourseScroll = useRef(false)
   const draggingCourse = useRef('')
   const dragEndedAt = useRef(0)
   const [draggingName, setDraggingName] = useState('')
   const [trashHot, setTrashHot] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState('')
+  const [courseSlide, setCourseSlide] = useState<{
+    incoming: string
+    outgoing: string
+    dir: 'next' | 'prev'
+  } | null>(null)
   const [quizTopic, setQuizTopic] = useState<Topic>('mixed')
   const [quizDifficulty, setQuizDifficulty] = useState(1)
   const [quizQuestion, setQuizQuestion] = useState<GeneratedQuestion | null>(null)
@@ -192,15 +237,19 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   const [lookHint, setLookHint] = useState('')
   const courseImageInput = useRef<HTMLInputElement>(null)
   const orderDragIndex = useRef(-1)
+  const orderDragName = useRef('')
+  const frameDrag = useRef<{ px: number; py: number; x: number; y: number } | null>(null)
   const studentId = useRef(getStudentId())
 
   const courses = notebook.courses
   const courseOrderKey = courses.map((course) => course.name).join('|')
   const activeCourse = notebook.activeCourse
   const activeCourseRef = useRef(activeCourse)
+  const displayedCourse = useRef(activeCourse)
   activeCourseRef.current = activeCourse
   const activeUnit = notebook.activeUnit
   const units = unitsFor(courses, activeCourse)
+  const stashedUnits = stashedUnitsFor(courses, activeCourse)
   const activeTone = courseTone(courses.find((course) => course.name === activeCourse) ?? { name: activeCourse })
   const looking = courses.find((course) => course.name === lookCourse) ?? courses.find((course) => course.name === activeCourse)
   const unitNotes = notesFor(notebook.deposits, activeCourse, activeUnit)
@@ -245,54 +294,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   }, [notebook])
 
   useEffect(() => {
-    setNotebook((current) => {
-      if (current.courses.every((course) => course.tone)) return current
-      return { ...current, courses: withCourseTones(current.courses) }
-    })
-  }, [])
-
-  useLayoutEffect(() => {
-    const pages = pagesRef.current
-    const panel = pages?.parentElement
-    if (!pages || !panel) return
-
-    const syncHeight = () => {
-      const next = `${Math.round(panel.clientHeight)}px`
-      if (pages.style.getPropertyValue('--panel-view-height') !== next) {
-        pages.style.setProperty('--panel-view-height', next)
-      }
-    }
-
-    syncHeight()
-    const observer = new ResizeObserver(syncHeight)
-    observer.observe(panel)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const pages = pagesRef.current
-    if (!pages) return
-
-    const syncFn = () => {
-      const index = Math.round(pages.scrollTop / Math.max(pages.clientHeight, 1))
-      const next = (['scan', 'cards', 'quiz'] as const)[index] ?? 'scan'
-      setPanelFn((current) => (current === next ? current : next))
-    }
-    let frame = 0
-    const onScroll = () => {
-      if (frame) return
-      frame = window.requestAnimationFrame(() => {
-        frame = 0
-        syncFn()
-      })
-    }
-
-    syncFn()
-    pages.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      pages.removeEventListener('scroll', onScroll)
-      if (frame) window.cancelAnimationFrame(frame)
-    }
+    setNotebook((current) => ({ ...current, courses: withCourseTones(current.courses) }))
   }, [])
 
   useEffect(() => {
@@ -300,11 +302,12 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     if (!root) return
 
     const syncCourse = () => {
-      const index = Math.round(root.scrollTop / Math.max(root.clientHeight, 1))
+      const page = Math.max(root.clientHeight, 1)
+      const index = Math.round(root.scrollTop / page)
+      if (Math.abs(root.scrollTop - index * page) > 10) return
       const course = courses[index]
       if (!course || course.name === activeCourseRef.current) return
-      skipCourseScroll.current = true
-      chooseCourse(course.name)
+      chooseCourse(course.name, true)
     }
     let frame = 0
     const onScroll = () => {
@@ -316,11 +319,13 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     }
 
     root.addEventListener('scroll', onScroll, { passive: true })
+    root.addEventListener('scrollend', syncCourse)
     return () => {
       root.removeEventListener('scroll', onScroll)
+      root.removeEventListener('scrollend', syncCourse)
       if (frame) window.cancelAnimationFrame(frame)
     }
-  }, [activeCourse, courseOrderKey, courses])
+  }, [courseOrderKey, courses])
 
   useLayoutEffect(() => {
     const root = coursePagesRef.current
@@ -342,6 +347,33 @@ export function Tools({ accessToken }: { accessToken?: string }) {
   }, [orderOpen])
 
   useEffect(() => {
+    const from = displayedCourse.current
+    if (activeCourse === from) return
+    const fromIdx = courses.findIndex((course) => course.name === from)
+    const toIdx = courses.findIndex((course) => course.name === activeCourse)
+    if (from && activeCourse) {
+      setCourseSlide((current) => {
+        if (current?.incoming === activeCourse && current.outgoing === from) return current
+        return {
+          incoming: activeCourse,
+          outgoing: from,
+          dir: toIdx >= fromIdx ? 'next' : 'prev',
+        }
+      })
+    }
+    displayedCourse.current = activeCourse
+  }, [activeCourse, courseOrderKey])
+
+  useEffect(() => {
+    if (!pendingDelete) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPendingDelete('')
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [pendingDelete])
+
+  useEffect(() => {
     if (!addingCourse) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeAddCourse()
@@ -355,6 +387,38 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     void loadQuizQuestion()
   }, [activeCourse, activeUnit, unitNotes.length, panelFn])
 
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+
+    const canScroll = (node: HTMLElement) => {
+      if (node === stage) return false
+      const overflow = getComputedStyle(node).overflowY
+      if (overflow !== 'auto' && overflow !== 'scroll') return false
+      return node.scrollHeight > node.clientHeight + 1
+    }
+
+    const onWheel = (event: WheelEvent) => {
+      let node = event.target as HTMLElement | null
+      while (node && node !== stage) {
+        if (canScroll(node)) {
+          const up = event.deltaY < 0 && node.scrollTop <= 0
+          const down = event.deltaY > 0 && node.scrollTop + node.clientHeight >= node.scrollHeight - 1
+          if (!up && !down) return
+        }
+        node = node.parentElement
+      }
+      if (event.deltaY === 0) return
+      const unit =
+        event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? stage.clientHeight : 1
+      stage.scrollTop += event.deltaY * unit * 1.7
+      event.preventDefault()
+    }
+
+    stage.addEventListener('wheel', onWheel, { passive: false, capture: true })
+    return () => stage.removeEventListener('wheel', onWheel, { capture: true })
+  }, [])
+
   function addCourse(event: FormEvent) {
     event.preventDefault()
     const name = newCourse.trim()
@@ -363,7 +427,10 @@ export function Tools({ accessToken }: { accessToken?: string }) {
       if (current.courses.some((course) => course.name === name)) {
         return { ...current, activeCourse: name, activeUnit: unitsFor(current.courses, name)[0] ?? '' }
       }
-      const courses: Course[] = [...current.courses, { name, units: [], tone: pickCourseTone(current.courses) }]
+      const courses: Course[] = [
+        ...current.courses,
+        { name, units: [], stashedUnits: [], tone: pickCourseTone(current.courses) },
+      ]
       return { ...current, courses, activeCourse: name, activeUnit: '' }
     })
     setNewCourse('')
@@ -377,6 +444,12 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     setAddHintOn('')
   }
 
+  function openOrderPop() {
+    setLookCourse(activeCourse || courses[0]?.name || '')
+    setLookHint('')
+    setOrderOpen(true)
+  }
+
   function jumpToCourse(name: string) {
     const root = coursePagesRef.current
     if (!root || !name) return
@@ -387,7 +460,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     root.scrollTop += page.getBoundingClientRect().top - root.getBoundingClientRect().top
   }
 
-  function chooseCourse(name: string) {
+  function chooseCourse(name: string, fromScroll = false) {
     if (Date.now() - dragEndedAt.current < 250) return
     setAddingUnit(false)
     setNewUnit('')
@@ -398,13 +471,13 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     setAddingCourse(false)
     setNewCourse('')
     setAddHintOn('')
-    skipCourseScroll.current = false
+    skipCourseScroll.current = true
     setNotebook((current) => ({
       ...current,
       activeCourse: name,
       activeUnit: unitsFor(current.courses, name)[0] ?? '',
     }))
-    jumpToCourse(name)
+    if (!fromScroll) jumpToCourse(name)
   }
 
   function moveCourse(from: number, to: number) {
@@ -416,6 +489,13 @@ export function Tools({ accessToken }: { accessToken?: string }) {
       next.splice(to, 0, item)
       return { ...current, courses: next }
     })
+  }
+
+  function patchCourse(name: string, patch: Partial<Course>) {
+    setNotebook((current) => ({
+      ...current,
+      courses: current.courses.map((course) => (course.name === name ? { ...course, ...patch } : course)),
+    }))
   }
 
   function startRenameCourse(name: string) {
@@ -449,13 +529,24 @@ export function Tools({ accessToken }: { accessToken?: string }) {
       activeCourse: current.activeCourse === from ? to : current.activeCourse,
     }))
     setLookCourse((current) => (current === from ? to : current))
+    renamePlannerCourse(from, to)
     cancelRenameCourse()
   }
 
   function setCourseImage(name: string, image: string | undefined) {
     setNotebook((current) => ({
       ...current,
-      courses: current.courses.map((course) => (course.name === name ? { ...course, image } : course)),
+      courses: current.courses.map((course) =>
+        course.name === name
+          ? {
+              ...course,
+              image,
+              coverX: image ? 50 : undefined,
+              coverY: image ? 50 : undefined,
+              coverZoom: image ? 1 : undefined,
+            }
+          : course,
+      ),
     }))
   }
 
@@ -498,6 +589,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     })
     setNotice(`Removed “${name}”.`)
     setLookCourse((current) => (current === name ? '' : current))
+    removePlannerForCourse(name)
   }
 
   function chooseUnit(name: string) {
@@ -508,18 +600,86 @@ export function Tools({ accessToken }: { accessToken?: string }) {
     event?.preventDefault()
     const name = newUnit.trim()
     if (!name) return
+    if (stashedUnitsFor(courses, activeCourse).includes(name)) {
+      restoreUnit(name)
+      setNewUnit('')
+      setAddingUnit(false)
+      return
+    }
     setNotebook((current) => {
       const already = unitsFor(current.courses, current.activeCourse)
       if (already.includes(name)) {
         return { ...current, activeUnit: name }
       }
       const courses = current.courses.map((course) =>
-        course.name === current.activeCourse ? { ...course, units: [...course.units, name] } : course,
+        course.name === current.activeCourse
+          ? { ...course, units: [...course.units, name], stashedUnits: course.stashedUnits ?? [] }
+          : course,
       )
       return { ...current, courses, activeUnit: name }
     })
     setNewUnit('')
     setAddingUnit(false)
+  }
+
+  function stashUnit(name: string) {
+    if (!name || !activeCourse) return
+    setNotebook((current) => {
+      const courses = current.courses.map((course) => {
+        if (course.name !== current.activeCourse || !course.units.includes(name)) return course
+        return {
+          ...course,
+          units: course.units.filter((item) => item !== name),
+          stashedUnits: [...(course.stashedUnits ?? []).filter((item) => item !== name), name],
+        }
+      })
+      const nextUnits = unitsFor(courses, current.activeCourse)
+      return {
+        ...current,
+        courses,
+        activeUnit: current.activeUnit === name ? (nextUnits[0] ?? '') : current.activeUnit,
+      }
+    })
+    if (renamingUnit === name) {
+      setRenamingUnit('')
+      setRenameDraft('')
+    }
+    setNotice(`Put “${name}” away. Restore it from the unit navigator.`)
+  }
+
+  function restoreUnit(name: string) {
+    if (!name || !activeCourse) return
+    setNotebook((current) => {
+      const courses = current.courses.map((course) => {
+        if (course.name !== current.activeCourse) return course
+        const stashed = (course.stashedUnits ?? []).filter((item) => item !== name)
+        if (course.units.includes(name)) return { ...course, stashedUnits: stashed }
+        return { ...course, units: [...course.units, name], stashedUnits: stashed }
+      })
+      return { ...current, courses, activeUnit: name }
+    })
+    setNotice(`Restored “${name}”.`)
+  }
+
+  function forgetUnit(name: string) {
+    if (!name || !activeCourse) return
+    setNotebook((current) => ({
+      ...current,
+      courses: current.courses.map((course) =>
+        course.name === current.activeCourse
+          ? {
+              ...course,
+              units: course.units.filter((item) => item !== name),
+              stashedUnits: (course.stashedUnits ?? []).filter((item) => item !== name),
+            }
+          : course,
+      ),
+      deposits: current.deposits.filter(
+        (item) => !(item.course === current.activeCourse && item.unit === name),
+      ),
+      activeUnit: current.activeUnit === name ? '' : current.activeUnit,
+    }))
+    setNotice(`Deleted “${name}”.`)
   }
 
   function startRename(name: string) {
@@ -544,7 +704,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
       return
     }
     const taken = unitsFor(courses, activeCourse).some((item) => item !== from && item === to)
-    if (taken) {
+    if (taken || stashedUnitsFor(courses, activeCourse).includes(to)) {
       setNotice(`“${to}” already exists in ${activeCourse}.`)
       return
     }
@@ -666,7 +826,31 @@ export function Tools({ accessToken }: { accessToken?: string }) {
       <div className="sheet__row">
         <div className="course-cluster">
         <aside className="courses">
-          <h1>Courses</h1>
+          <div className="courses__rail">
+            <div className="courses__main">
+              <div className="courses__heading">
+                <h1>Courses</h1>
+                <button
+                  className="order-bar__sort"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={orderOpen}
+                  aria-label="Reorder course tabs"
+                  title="Reorder course tabs"
+                  onClick={openOrderPop}
+                >
+                  <GripMark />
+                </button>
+                <button
+                  className={`order-bar__pop ${orderOpen ? 'is-open' : ''}`}
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={orderOpen}
+                  aria-label="Customize course covers"
+                  title="Customize course covers"
+                  onClick={openOrderPop}
+                />
+              </div>
               <div className="course-pages" ref={coursePagesRef}>
                 {courses.length === 0 ? (
                   <section className="course-page" aria-label="Add course">
@@ -701,6 +885,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                         style={courseLookStyle(course)}
                         onSubmit={commitRenameCourse}
                       >
+                        <CourseCover src={course.image} {...coverFrame(course)} />
                         <input
                           value={courseRenameDraft}
                           onChange={(event) => setCourseRenameDraft(event.target.value)}
@@ -745,10 +930,38 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                           setTrashHot(false)
                         }}
                       >
-                        <strong>{course.name}</strong>
-                        <small>Scroll for next course</small>
+                        <CourseCover src={course.image} {...coverFrame(course)} />
+                        <strong>{course.tabLabel || course.name}</strong>
+                        <small>{course.tabLabel ? course.name : 'Scroll for next course'}</small>
                       </button>
                     )}
+                    <button
+                      className={`course-trash ${trashHot && draggingName === course.name ? 'is-hot' : ''}`}
+                      type="button"
+                      aria-label={`Remove ${course.name}`}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        setPendingDelete(course.name)
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault()
+                        event.dataTransfer.dropEffect = 'move'
+                        setTrashHot(true)
+                      }}
+                      onDragLeave={() => setTrashHot(false)}
+                      onDrop={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        const name = event.dataTransfer.getData('text/plain') || draggingCourse.current
+                        setTrashHot(false)
+                        draggingCourse.current = ''
+                        setDraggingName('')
+                        if (name) setPendingDelete(name)
+                      }}
+                    >
+                      <TrashMark />
+                    </button>
                     <div
                       className="course-add-hot"
                       onMouseEnter={() => {
@@ -792,43 +1005,21 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                   </section>
                 ))}
               </div>
-              <button
-                className={`course-trash ${trashHot ? 'is-hot' : ''}`}
-                type="button"
-                aria-label="Drop a course here to remove it"
-                onClick={() => setNotice('Drag the course onto the trash to remove it.')}
-                onDragOver={(event) => {
-                  event.preventDefault()
-                  event.dataTransfer.dropEffect = 'move'
-                  setTrashHot(true)
-                }}
-                onDragLeave={() => setTrashHot(false)}
-                onDrop={(event) => {
-                  event.preventDefault()
-                  const name = event.dataTransfer.getData('text/plain') || draggingCourse.current
-                  setTrashHot(false)
-                  draggingCourse.current = ''
-                  setDraggingName('')
-                  removeCourse(name)
-                }}
-              >
-                <TrashMark />
-              </button>
-        </aside>
-          <div className="order-bar">
-            <button
-              className={`order-bar__pop ${orderOpen ? 'is-open' : ''}`}
-              type="button"
-              aria-haspopup="dialog"
-              aria-expanded={orderOpen}
-              aria-label="Customize courses"
-              onClick={() => {
-                setLookCourse(activeCourse || courses[0]?.name || '')
-                setLookHint('')
-                setOrderOpen(true)
+            </div>
+            <ol
+              className="order-bar__ticks"
+              aria-label="Course order"
+              onWheel={(event) => {
+                const root = coursePagesRef.current
+                if (!root || courses.length < 2) return
+                event.preventDefault()
+                const dir = event.deltaY > 0 ? 1 : -1
+                const index = Math.round(root.scrollTop / Math.max(root.clientHeight, 1))
+                const next = courses[index + dir]
+                if (next) chooseCourse(next.name)
               }}
-            />
-            <ol className="order-bar__ticks" aria-label="Course order">
+              onDoubleClick={openOrderPop}
+            >
               {courses.map((course, index) => (
                 <li key={course.name} className={course.name === activeCourse ? 'is-on' : ''}>
                   <button
@@ -846,223 +1037,76 @@ export function Tools({ accessToken }: { accessToken?: string }) {
               ))}
             </ol>
           </div>
-        {orderOpen ? (
-          <div
-            className="order-pop"
-            role="presentation"
-            onClick={() => {
-              setOrderOpen(false)
-              setOrderDrag('')
-              orderDragIndex.current = -1
-            }}
-          >
-            <div
-              className="order-pop__card"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="order-pop-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <section className="order-pop__pane order-pop__pane--list">
-                <h2 id="order-pop-title">Customize courses</h2>
-                <p>Drag to reorder. Click a course to dress it up. Double-click a name to rename it.</p>
-                {courses.length === 0 ? (
-                  <p className="order-pop__empty">Add a course first, then you can dress it up.</p>
-                ) : (
-                  <ol className="order-pop__list">
-                    {courses.map((course, index) => (
-                      <li
-                        key={course.name}
-                        className={`order-pop__item ${orderDrag === course.name ? 'is-dragging' : ''} ${
-                          course.name === (lookCourse || activeCourse) ? 'is-on' : ''
-                        }`}
-                        style={courseLookStyle(course)}
-                        draggable={renamingCourse !== course.name}
-                        onClick={() => {
-                          setLookCourse(course.name)
-                          chooseCourse(course.name)
-                          setLookHint('')
-                        }}
-                        onDoubleClick={(event) => {
-                          event.preventDefault()
-                          startRenameCourse(course.name)
-                        }}
-                        onDragStart={(event) => {
-                          if (renamingCourse === course.name) {
-                            event.preventDefault()
-                            return
-                          }
-                          orderDragIndex.current = index
-                          setOrderDrag(course.name)
-                          event.dataTransfer.setData('text/plain', course.name)
-                          event.dataTransfer.effectAllowed = 'move'
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault()
-                          event.dataTransfer.dropEffect = 'move'
-                          const from = orderDragIndex.current
-                          if (from < 0) return
-                          const box = event.currentTarget.getBoundingClientRect()
-                          let to = event.clientY < box.top + box.height / 2 ? index : index + 1
-                          if (from < to) to -= 1
-                          if (from === to) return
-                          orderDragIndex.current = to
-                          moveCourse(from, to)
-                        }}
-                        onDragEnd={() => {
-                          orderDragIndex.current = -1
-                          setOrderDrag('')
-                        }}
-                      >
-                        <span className="order-pop__grip">
-                          <GripMark />
-                        </span>
-                        <span className={`order-pop__thumb ${course.image ? 'has-image' : ''}`} aria-hidden="true">
-                          {course.image ? <img src={course.image} alt="" /> : null}
-                        </span>
-                        {renamingCourse === course.name ? (
-                          <input
-                            className="order-pop__rename"
-                            value={courseRenameDraft}
-                            onChange={(event) => setCourseRenameDraft(event.target.value)}
-                            aria-label={`Rename ${course.name}`}
-                            autoFocus
-                            onFocus={(event) => event.currentTarget.select()}
-                            onBlur={() => commitRenameCourse()}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Escape') {
-                                event.preventDefault()
-                                cancelRenameCourse()
-                              }
-                              if (event.key === 'Enter') commitRenameCourse(event)
-                            }}
-                          />
-                        ) : (
-                          <strong>{course.name}</strong>
-                        )}
-                        <span className="order-pop__shift">
-                          <button
-                            type="button"
-                            aria-label={`Move ${course.name} up`}
-                            disabled={index === 0}
-                            onClick={() => moveCourse(index, index - 1)}
-                          >
-                            ▲
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`Move ${course.name} down`}
-                            disabled={index === courses.length - 1}
-                            onClick={() => moveCourse(index, index + 1)}
-                          >
-                            ▼
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                <button
-                  className="order-pop__done"
-                  type="button"
-                  onClick={() => {
-                    setOrderOpen(false)
-                    setOrderDrag('')
-                    orderDragIndex.current = -1
-                  }}
-                >
-                  Done
-                </button>
-              </section>
-              <section
-                className="order-pop__pane order-pop__pane--look"
-                aria-label="Course look"
-                onDragOver={(event) => {
-                  event.preventDefault()
-                  event.dataTransfer.dropEffect = 'copy'
-                }}
-                onDrop={(event) => {
-                  event.preventDefault()
-                  void applyCourseImage(event.dataTransfer.files?.[0] ?? null)
-                }}
-              >
-                <input
-                  ref={courseImageInput}
-                  className="file-input"
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => void applyCourseImage(event.target.files?.[0] ?? null)}
-                />
-                {looking ? (
-                  <>
-                    <div className="course-look__preview" style={courseLookStyle(looking)}>
-                      <strong>{looking.name}</strong>
-                      <small>{looking.image ? 'Cover on' : 'Color only'}</small>
-                    </div>
-                    <div className="course-look__copy">
-                      {looking.image ? (
-                        <>
-                          <h3>Change the cover</h3>
-                          <p>Swap the photo on {looking.name} or drop a new one here. The course color still shows through.</p>
-                        </>
-                      ) : (
-                        <>
-                          <h3>Give {looking.name} a cover</h3>
-                          <p>Add a photo so this course stands out on the shelf. Drop an image here or pick one from your files.</p>
-                        </>
-                      )}
-                    </div>
-                    <div className="course-look__actions">
-                      <button
-                        type="button"
-                        disabled={lookBusy}
-                        onClick={() => courseImageInput.current?.click()}
-                      >
-                        {lookBusy ? 'Adding…' : looking.image ? 'Change image' : 'Add image'}
-                      </button>
-                      {looking.image ? (
-                        <button
-                          type="button"
-                          className="is-ghost"
-                          disabled={lookBusy}
-                          onClick={() => {
-                            setCourseImage(looking.name, undefined)
-                            setLookHint(`Cover removed from ${looking.name}.`)
-                          }}
-                        >
-                          Remove cover
-                        </button>
-                      ) : null}
-                    </div>
-                    {lookHint ? <p className="course-look__hint">{lookHint}</p> : null}
-                  </>
-                ) : (
-                  <div className="course-look__copy">
-                    <h3>No course selected</h3>
-                    <p>Add a course first, then come back here to give it a cover image.</p>
-                  </div>
-                )}
-              </section>
-            </div>
-          </div>
-        ) : null}
+        </aside>
         </div>
 
-        <section className="stage">
+        <section className="stage" ref={stageRef}>
+          <div className="stage__desk">
           <header className="stage__intro">
-            <p className="stage__kicker">Tools</p>
-            <h2 className="stage__title">Turn notes into practice</h2>
-            <p className="stage__desc">
-              Pick a course and unit, upload your material, then scroll down for flashcards and quizzes.
-            </p>
+            <div className="stage__lead">
+              <p className="stage__kicker">{activeCourse ? 'Now navigating' : 'Tools'}</p>
+              <div className="stage__course" aria-live="polite">
+                <span className="stage__title-sizer" aria-hidden="true">
+                  {courseSlide
+                    ? courseSlide.outgoing.length >= courseSlide.incoming.length
+                      ? courseSlide.outgoing
+                      : courseSlide.incoming
+                    : activeCourse || 'Add a course'}
+                </span>
+                {courseSlide ? (
+                  <>
+                    <h2 className={`stage__title is-leave-${courseSlide.dir}`} aria-hidden="true">
+                      {courseSlide.outgoing}
+                    </h2>
+                    <h2
+                      className={`stage__title is-enter-${courseSlide.dir}`}
+                      onAnimationEnd={(event) => {
+                        if (event.currentTarget.classList.contains(`is-enter-${courseSlide.dir}`)) {
+                          setCourseSlide(null)
+                        }
+                      }}
+                    >
+                      {courseSlide.incoming}
+                    </h2>
+                  </>
+                ) : (
+                  <h2 className="stage__title">{activeCourse || 'Add a course'}</h2>
+                )}
+              </div>
+            </div>
+            <CourseCalendar course={activeCourse} tone={activeTone} />
           </header>
+          <nav className="fn-dir" aria-label="Course tools">
+            <button
+              className={panelFn === 'scan' ? 'is-on' : ''}
+              type="button"
+              onClick={() => setPanelFn('scan')}
+            >
+              Note taker
+            </button>
+            <button
+              className={panelFn === 'cards' ? 'is-on' : ''}
+              type="button"
+              onClick={() => setPanelFn('cards')}
+            >
+              Flashcards
+            </button>
+            <button
+              className={panelFn === 'quiz' ? 'is-on' : ''}
+              type="button"
+              onClick={() => setPanelFn('quiz')}
+            >
+              Quiz
+            </button>
+          </nav>
           <div className={`workbook is-fn-${panelFn}`} style={{ ['--course-tone' as string]: activeTone }}>
             <div className="unit-tabs" role="tablist" aria-label={`Units in ${activeCourse}`}>
-              {units.map((item) =>
+              {units.map((item, index) =>
                 item === renamingUnit ? (
                   <form
                     key={item}
                     className="unit-tab unit-tab--new is-active"
+                    style={{ ['--unit-tone' as string]: COURSE_TONES[index % COURSE_TONES.length] }}
                     onSubmit={commitRename}
                   >
                     <input
@@ -1082,25 +1126,49 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                     />
                   </form>
                 ) : (
-                  <button
+                  <div
                     key={item}
                     className={`unit-tab ${item === activeUnit ? 'is-active' : ''}`}
-                    type="button"
+                    style={{ ['--unit-tone' as string]: COURSE_TONES[index % COURSE_TONES.length] }}
                     role="tab"
                     title="Double-click to rename"
                     aria-selected={item === activeUnit}
+                    tabIndex={0}
                     onClick={() => chooseUnit(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        chooseUnit(item)
+                      }
+                    }}
                     onDoubleClick={(event) => {
                       event.preventDefault()
                       startRename(item)
                     }}
                   >
-                    {item}
-                  </button>
+                    <span>{item}</span>
+                    <button
+                      className="unit-tab__stash"
+                      type="button"
+                      aria-label={`Put ${item} away`}
+                      title="Put away"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        stashUnit(item)
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 ),
               )}
               {addingUnit ? (
-                <form className="unit-tab unit-tab--new" onSubmit={addUnit}>
+                <form
+                  className="unit-tab unit-tab--new"
+                  style={{ ['--unit-tone' as string]: COURSE_TONES[units.length % COURSE_TONES.length] }}
+                  onSubmit={addUnit}
+                >
                   <input
                     value={newUnit}
                     onChange={(event) => setNewUnit(event.target.value)}
@@ -1123,16 +1191,38 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                 <button
                   className="unit-tab unit-tab--add"
                   type="button"
+                  style={{ ['--unit-tone' as string]: COURSE_TONES[units.length % COURSE_TONES.length] }}
                   aria-label={`Add ${activeCourse} unit`}
                   onClick={() => setAddingUnit(true)}
                 >
                   +
                 </button>
               )}
+              {stashedUnits.length > 0 ? (
+                <ol className="unit-nav" aria-label="Put-away units">
+                  <li className="unit-nav__label">Away</li>
+                  {stashedUnits.map((item) => (
+                    <li key={item}>
+                      <button
+                        type="button"
+                        title={`Restore ${item}`}
+                        aria-label={`Restore ${item}`}
+                        style={{ backgroundColor: activeTone }}
+                        onClick={() => restoreUnit(item)}
+                        onContextMenu={(event) => {
+                          event.preventDefault()
+                          forgetUnit(item)
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
             </div>
 
             <div className="panel">
-              <div className="panel-pages" ref={pagesRef}>
+              <div className="panel-pages">
+                {panelFn === 'scan' ? (
                 <section className="panel-page panel-page--scan" aria-label="Scan and notes">
                   <form className="scan" onSubmit={sendUpload}>
                     <div className="scan__stage">
@@ -1157,7 +1247,7 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                   </form>
 
                   <section className="requests">
-                    <h2>{activeUnit ? `${activeUnit} notes` : 'Requests'}</h2>
+                    <h2>Extra Notes</h2>
                     {activeUnit && unitNotes.length === 0 ? (
                       <p>Nothing deposited here yet.</p>
                     ) : null}
@@ -1178,7 +1268,9 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                     ) : null}
                   </section>
                 </section>
+                ) : null}
 
+                {panelFn === 'cards' ? (
                 <section className="panel-page panel-page--cards" aria-label="Flashcards">
                   <div className="flash">
                     <p className="flash__kicker">Function 2</p>
@@ -1238,7 +1330,9 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                     </div>
                   </div>
                 </section>
+                ) : null}
 
+                {panelFn === 'quiz' ? (
                 <section className="panel-page panel-page--quiz" aria-label="Quiz">
                   <div className="quiz">
                     <p className="quiz__kicker">Function 3</p>
@@ -1307,17 +1401,330 @@ export function Tools({ accessToken }: { accessToken?: string }) {
                     ) : null}
                   </div>
                 </section>
+                ) : null}
               </div>
             </div>
           </div>
+          <p className="stage__hint">Scroll for the summarizer</p>
+          </div>
+          <NoteLectern
+            course={activeCourse}
+            unit={activeUnit}
+            deposits={notebook.deposits}
+            tone={activeTone}
+          />
         </section>
       </div>
 
+      {pendingDelete ? (
+        <div className="order-pop course-delete-pop" role="presentation" onClick={() => setPendingDelete('')}>
+          <div
+            className="course-delete"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="course-delete-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="course-delete-title">Delete this course?</h2>
+            <p>
+              “{pendingDelete}” and its units and notes will be removed. This cannot be undone.
+            </p>
+            <div className="course-delete__actions">
+              <button type="button" autoFocus onClick={() => setPendingDelete('')}>
+                Cancel
+              </button>
+              <button
+                className="course-delete__confirm"
+                type="button"
+                onClick={() => {
+                  const name = pendingDelete
+                  setPendingDelete('')
+                  removeCourse(name)
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {notice ? (
         <p className="notice" role="status">
           {notice}
         </p>
       ) : null}
+      {orderOpen
+        ? createPortal(
+            <div
+              className="order-pop"
+              role="presentation"
+              onClick={() => {
+                setOrderOpen(false)
+                setOrderDrag('')
+                orderDragIndex.current = -1
+              }}
+            >
+              <div
+                className="order-pop__card"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="order-pop-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <section className="order-pop__pane order-pop__pane--list">
+                  <h2 id="order-pop-title">Course tabs</h2>
+                  <p>Top to bottom is the navigator order. Drag or use the arrows. Click a course to customize it.</p>
+                  {courses.length === 0 ? (
+                    <p className="order-pop__empty">Add a course first, then you can dress it up.</p>
+                  ) : (
+                    <ol className="order-pop__list">
+                      {courses.map((course, index) => (
+                        <li
+                          key={course.name}
+                          className={`order-pop__item ${orderDrag === course.name ? 'is-dragging' : ''} ${
+                            course.name === (lookCourse || activeCourse) ? 'is-on' : ''
+                          }`}
+                          style={courseLookStyle(course)}
+                          draggable={renamingCourse !== course.name}
+                          onClick={() => {
+                            setLookCourse(course.name)
+                            setLookHint('')
+                          }}
+                          onDoubleClick={(event) => {
+                            event.preventDefault()
+                            startRenameCourse(course.name)
+                          }}
+                          onDragStart={(event) => {
+                            if (renamingCourse === course.name) {
+                              event.preventDefault()
+                              return
+                            }
+                            orderDragName.current = course.name
+                            setOrderDrag(course.name)
+                            event.dataTransfer.setData('text/plain', course.name)
+                            event.dataTransfer.effectAllowed = 'move'
+                          }}
+                          onDragOver={(event) => {
+                            event.preventDefault()
+                            event.dataTransfer.dropEffect = 'move'
+                            const dragged = orderDragName.current
+                            if (!dragged) return
+                            const from = courses.findIndex((item) => item.name === dragged)
+                            if (from < 0 || from === index) return
+                            moveCourse(from, index)
+                          }}
+                          onDragEnd={() => {
+                            orderDragName.current = ''
+                            setOrderDrag('')
+                          }}
+                        >
+                          <span className="order-pop__grip">
+                            <GripMark />
+                          </span>
+                          <span className={`order-pop__thumb ${course.image ? 'has-image' : ''}`} aria-hidden="true">
+                          {course.image ? (
+                          <img
+                            src={course.image}
+                            alt=""
+                            style={{ objectPosition: `${course.coverX ?? 50}% ${course.coverY ?? 50}%` }}
+                          />
+                        ) : null}
+                          </span>
+                          {renamingCourse === course.name ? (
+                            <input
+                              className="order-pop__rename"
+                              value={courseRenameDraft}
+                              onChange={(event) => setCourseRenameDraft(event.target.value)}
+                              aria-label={`Rename ${course.name}`}
+                              autoFocus
+                              onFocus={(event) => event.currentTarget.select()}
+                              onBlur={() => commitRenameCourse()}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Escape') {
+                                  event.preventDefault()
+                                  cancelRenameCourse()
+                                }
+                                if (event.key === 'Enter') commitRenameCourse(event)
+                              }}
+                            />
+                          ) : (
+                            <strong>
+                              {course.name}
+                              {course.tabLabel ? <em>{course.tabLabel}</em> : null}
+                            </strong>
+                          )}
+                          <span className="order-pop__shift">
+                            <button
+                              type="button"
+                              aria-label={`Move ${course.name} up`}
+                              disabled={index === 0}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                moveCourse(index, index - 1)
+                              }}
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Move ${course.name} down`}
+                              disabled={index === courses.length - 1}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                moveCourse(index, index + 1)
+                              }}
+                            >
+                              ▼
+                            </button>
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                  <button
+                    className="order-pop__done"
+                    type="button"
+                    onClick={() => {
+                      setOrderOpen(false)
+                      setOrderDrag('')
+                      orderDragIndex.current = -1
+                    }}
+                  >
+                    Done
+                  </button>
+                </section>
+                <section
+                  className="order-pop__pane order-pop__pane--look"
+                  aria-label="Customize course"
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'copy'
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    void applyCourseImage(event.dataTransfer.files?.[0] ?? null)
+                  }}
+                >
+                  <input
+                    ref={courseImageInput}
+                    className="file-input"
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => void applyCourseImage(event.target.files?.[0] ?? null)}
+                  />
+                  {looking ? (
+                    <>
+                      <div
+                        className={`course-look__preview ${looking.image ? 'has-image is-frame' : ''}`}
+                        style={courseLookStyle(looking)}
+                        onPointerDown={(event) => {
+                          if (!looking.image) return
+                          event.preventDefault()
+                          event.currentTarget.setPointerCapture(event.pointerId)
+                          const frame = coverFrame(looking)
+                          frameDrag.current = { px: event.clientX, py: event.clientY, x: frame.x, y: frame.y }
+                        }}
+                        onPointerMove={(event) => {
+                          const drag = frameDrag.current
+                          if (!drag || !looking.image) return
+                          const box = event.currentTarget.getBoundingClientRect()
+                          const coverX = clamp(drag.x - ((event.clientX - drag.px) / Math.max(box.width, 1)) * 100, 0, 100)
+                          const coverY = clamp(drag.y - ((event.clientY - drag.py) / Math.max(box.height, 1)) * 100, 0, 100)
+                          patchCourse(looking.name, { coverX, coverY })
+                        }}
+                        onPointerUp={() => {
+                          frameDrag.current = null
+                        }}
+                        onPointerCancel={() => {
+                          frameDrag.current = null
+                        }}
+                      >
+                        <CourseCover src={looking.image} {...coverFrame(looking)} />
+                        <strong>{looking.tabLabel || looking.name}</strong>
+                        <small>{looking.image ? 'Drag to frame' : looking.tabLabel ? looking.name : 'Color only'}</small>
+                      </div>
+                      <div className="course-look__copy">
+                        <h3>Customize {looking.name}</h3>
+                        <p>Color stays with this course when you reorder. Cover and tab label are optional.</p>
+                      </div>
+                      <fieldset className="course-look__field">
+                        <legend>Color</legend>
+                        <div className="course-look__swatches">
+                          {COURSE_TONES.map((tone) => (
+                            <button
+                              key={tone}
+                              type="button"
+                              className={courseTone(looking).toLowerCase() === tone.toLowerCase() ? 'is-on' : ''}
+                              style={{ backgroundColor: tone }}
+                              aria-label={`Set color ${tone}`}
+                              aria-pressed={courseTone(looking).toLowerCase() === tone.toLowerCase()}
+                              onClick={() => {
+                                patchCourse(looking.name, { tone })
+                                setLookHint(`Color saved on ${looking.name}.`)
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </fieldset>
+                      <label className="course-look__field">
+                        <span>Tab label</span>
+                        <input
+                          value={looking.tabLabel ?? ''}
+                          placeholder={looking.name}
+                          aria-label={`Tab label for ${looking.name}`}
+                          onChange={(event) => patchCourse(looking.name, { tabLabel: event.target.value })}
+                        />
+                        <small>Shown on the big course tab. Leave blank to use the course name.</small>
+                      </label>
+                      <div className="course-look__actions">
+                        <button type="button" disabled={lookBusy} onClick={() => courseImageInput.current?.click()}>
+                          {lookBusy ? 'Adding…' : looking.image ? 'Change cover' : 'Add cover'}
+                        </button>
+                        {looking.image ? (
+                          <button
+                            type="button"
+                            className="is-ghost"
+                            disabled={lookBusy}
+                            onClick={() => {
+                              setCourseImage(looking.name, undefined)
+                              setLookHint(`Cover removed from ${looking.name}.`)
+                            }}
+                          >
+                            Remove cover
+                          </button>
+                        ) : null}
+                      </div>
+                      {looking.image ? (
+                        <label className="course-look__field">
+                          <span>Zoom</span>
+                          <input
+                            type="range"
+                            min="1"
+                            max="2.2"
+                            step="0.05"
+                            value={looking.coverZoom ?? 1}
+                            aria-label={`Cover zoom for ${looking.name}`}
+                            onChange={(event) =>
+                              patchCourse(looking.name, { coverZoom: Number(event.target.value) })
+                            }
+                          />
+                          <small>Drag the preview to choose the part that stays on the course tab.</small>
+                        </label>
+                      ) : null}
+                      {lookHint ? <p className="course-look__hint">{lookHint}</p> : null}
+                    </>
+                  ) : (
+                    <div className="course-look__copy">
+                      <h3>No course selected</h3>
+                      <p>Add a course first, then come back here to customize it.</p>
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   )
 }

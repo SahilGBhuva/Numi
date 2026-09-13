@@ -1,0 +1,347 @@
+.planner {
+  --planner-tone: #ff1744;
+  position: relative;
+  z-index: 6;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.planner__due,
+.planner__mini {
+  padding: 8px 8px 10px;
+  border: 1px solid rgba(232, 223, 176, 0.28);
+  border-radius: 14px;
+  background: rgba(13, 26, 40, 0.88);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.planner__due {
+  width: 176px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.planner__due-empty {
+  margin: auto 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.planner__due-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.planner__due-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  background: rgba(232, 223, 176, 0.06);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.planner__due-list li.is-high {
+  box-shadow: inset 3px 0 0 #ff1744;
+}
+
+.planner__due-list li.is-medium {
+  box-shadow: inset 3px 0 0 #ffd600;
+}
+
+.planner__due-list li.is-low {
+  box-shadow: inset 3px 0 0 #00b0ff;
+}
+
+.planner__due-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planner__mini {
+  width: 168px;
+}
+
+.planner__mini-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.planner__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.planner__grid--mini span {
+  display: grid;
+  place-items: center;
+  min-height: 14px;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.planner__grid--mini .is-marked {
+  color: #fff;
+  background: var(--planner-tone);
+  border-radius: 999px;
+}
+
+.planner__pop {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 8;
+  width: min(720px, calc(100vw - 280px));
+  padding: 16px;
+  border: 1px solid var(--ink);
+  border-radius: 18px;
+  background: #0d1a28;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  animation: planner-open 0.28s ease both;
+}
+
+.planner__pop-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.planner__pop-head p {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.planner__pop-head strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 22px;
+}
+
+.planner__pop-head button,
+.planner__month-nav button,
+.planner__form button,
+.planner__list button {
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.planner__pop-body {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.1fr);
+  gap: 18px;
+}
+
+.planner__month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-weight: 800;
+}
+
+.planner__grid--full {
+  gap: 4px;
+}
+
+.planner__grid--full .is-dow,
+.planner__grid--full span {
+  display: grid;
+  place-items: center;
+  min-height: 28px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.planner__grid--full button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: rgba(232, 223, 176, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.planner__grid--full button.is-today {
+  outline: 1px solid var(--planner-tone);
+}
+
+.planner__grid--full button.is-on {
+  background: var(--planner-tone);
+  color: #fff;
+}
+
+.planner__grid--full button.is-marked:not(.is-on) {
+  box-shadow: inset 0 -3px 0 var(--planner-tone);
+}
+
+.planner__desk {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.planner__form,
+.planner__desk section {
+  display: grid;
+  gap: 8px;
+}
+
+.planner__form label,
+.planner__desk h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.planner__form input,
+.planner__form select {
+  width: 100%;
+  margin-top: 4px;
+  border: 1px solid rgba(232, 223, 176, 0.28);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(7, 17, 28, 0.45);
+  color: inherit;
+  font: inherit;
+}
+
+.planner__form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.planner__form button {
+  justify-self: start;
+  background: var(--raised);
+}
+
+.planner__empty {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.planner__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.planner__list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: rgba(232, 223, 176, 0.06);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.planner__list li.is-high {
+  box-shadow: inset 3px 0 0 #ff1744;
+}
+
+.planner__list li.is-medium {
+  box-shadow: inset 3px 0 0 #ffd600;
+}
+
+.planner__list li.is-low {
+  box-shadow: inset 3px 0 0 #00b0ff;
+}
+
+.planner__list li.is-done span {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.planner__when {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+@keyframes planner-open {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 860px) {
+  .planner {
+    width: 100%;
+  }
+
+  .planner__due,
+  .planner__mini {
+    width: min(176px, calc(50% - 5px));
+  }
+
+  .planner__pop {
+    position: fixed;
+    inset: 16px;
+    width: auto;
+    overflow: auto;
+  }
+
+  .planner__pop-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planner__pop {
+    animation: none;
+  }
+}

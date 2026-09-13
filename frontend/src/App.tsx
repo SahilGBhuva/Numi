@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { AuthGate } from './components/AuthGate'
+import { useAuth } from './lib/AuthContext'
 import { SCREENS, SiteSidebar, type Screen } from './lib/SiteSidebar'
 import { recordDailyLogin } from './lib/api'
-import { loadAuthSession, refreshAuthSession, type AuthSession } from './lib/auth'
 import { getStudentId } from './lib/session'
 import { Home } from './pages/Home'
 import { Progress } from './pages/Progress'
@@ -20,21 +21,15 @@ function currentScreen(): Screen {
   return SCREENS.includes(hash) ? hash : 'home'
 }
 
-function App() {
+function AppShell() {
   const [screen, setScreen] = useState(currentScreen)
   const [notice, setNotice] = useState('')
-  const [session, setSession] = useState<AuthSession | null>(() => loadAuthSession())
+  const { session, setSession } = useAuth()
 
   useEffect(() => {
     const sync = () => setScreen(currentScreen())
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
-  }, [])
-
-  useEffect(() => {
-    const current = loadAuthSession()
-    if (!current) return
-    void refreshAuthSession(current).then(setSession)
   }, [])
 
   useEffect(() => {
@@ -53,11 +48,11 @@ function App() {
           <span className="binder-sparks__tab" />
           <span className="binder-sparks__ring" />
         </div>
-        {screen === 'home' ? <Home /> : null}
+        {screen === 'home' ? <Home session={session} /> : null}
         {screen === 'tools' ? <Tools accessToken={session?.access_token} /> : null}
         {screen === 'progress' ? <Progress session={session} /> : null}
         {screen === 'games' ? <Games /> : null}
-        {screen === 'goals' ? <Goals /> : null}
+        {screen === 'goals' ? <Goals session={session} /> : null}
         {screen === 'profile' ? <Profile session={session} onError={setNotice} /> : null}
         {screen === 'settings' ? <Settings session={session} onSession={setSession} /> : null}
         {screen === 'more' ? <More /> : null}
@@ -68,6 +63,14 @@ function App() {
         ) : null}
       </main>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <AuthGate>
+      <AppShell />
+    </AuthGate>
   )
 }
 

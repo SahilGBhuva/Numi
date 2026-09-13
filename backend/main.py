@@ -128,6 +128,19 @@ class AuthConfigResponse(BaseModel):
     supabase_anon_key: str
 
 
+class FriendRequestCreate(BaseModel):
+    friend_code: str = Field(min_length=4, max_length=12)
+
+
+class FriendRequestDecision(BaseModel):
+    accept: bool
+
+
+class FriendQuestCreate(BaseModel):
+    friend_id: str = Field(min_length=1, max_length=100)
+    target_xp: int = Field(default=100, ge=50, le=1000)
+
+
 def normalize_text(value: str) -> str:
     return " ".join(value.strip().lower().split())
 
@@ -297,6 +310,13 @@ def social_error(error: ValueError) -> HTTPException:
     messages = {
         "username_taken": (409, "That username is already taken"),
         "invalid_daily_goal": (400, "Pick a daily goal of 10, 20, 30, or 50 XP"),
+        "friend_not_found": (404, "No learner was found with that friend code"),
+        "cannot_friend_self": (400, "You cannot add yourself"),
+        "friendship_exists": (409, "You are already friends or a request is pending"),
+        "profile_not_found": (400, "Finish setting up your profile first"),
+        "request_not_found": (404, "Friend request not found"),
+        "request_already_answered": (409, "That friend request was already answered"),
+        "invalid_quest_target": (400, "Friend quests must be between 50 and 1000 XP"),
     }
     status, message = messages.get(str(error), (400, "Could not update that profile"))
     return HTTPException(status_code=status, detail=message)
@@ -354,6 +374,52 @@ def update_account_profile(
             data.avatar_path,
             data.daily_goal,
         )
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.get("/api/friends")
+def get_friends(authorization: Annotated[str | None, Header()] = None):
+    user = current_account(authorization)
+    return {
+        "friends": database.list_friends(user["id"]),
+        "requests": database.pending_friend_requests(user["id"]),
+        "leaderboard": database.friend_leaderboard(user["id"]),
+        "quests": database.active_friend_quests(user["id"]),
+    }
+
+
+@app.post("/api/friends/requests", status_code=201)
+def create_friend_request(data: FriendRequestCreate, authorization: Annotated[str | None, Header()] = None):
+    user = current_account(authorization)
+    try:
+        return database.send_friend_request(user["id"], data.friend_code.strip())
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.post("/api/friends/requests/{request_id}")
+def decide_friend_request(request_id: int, data: FriendRequestDecision, authorization: Annotated[str | None, Header()] = None):
+    user = current_account(authorization)
+    try:
+        return database.respond_to_friend_request(request_id, user["id"], data.accept)
+    except ValueError as error:
+        raise social_error(error) from error
+
+
+@app.delete("/api/friends/{friend_id}")
+def delete_friend(friend_id: str, authorization: Annotated[str | None, Header()] = None):
+    user = current_account(authorization)
+    if not database.remove_friend(user["id"], friend_id):
+        raise HTTPException(status_code=404, detail="Friend not found")
+    return {"deleted": True}
+
+
+@app.post("/api/friend-quests", status_code=201)
+def start_friend_quest(data: FriendQuestCreate, authorization: Annotated[str | None, Header()] = None):
+    user = current_account(authorization)
+    try:
+        return database.create_friend_quest(user["id"], data.friend_id, data.target_xp)
     except ValueError as error:
         raise social_error(error) from error
 

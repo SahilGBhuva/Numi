@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import { getFriends, type FriendsHub } from '../lib/api'
+import type { AuthSession } from '../lib/auth'
+import { isTutorialComplete, startTutorial } from '../lib/tutorial'
 import './HomeScreen.css'
 
 const SCHOLAR_QUOTES = [
@@ -66,9 +69,11 @@ const SCHOLAR_QUOTES = [
 
 const CYCLE_MS = 7000
 
-export function Home() {
+export function Home({ session }: { session?: AuthSession | null }) {
   const [index, setIndex] = useState(0)
   const [visible, setVisible] = useState(true)
+  const [tutorialComplete, setTutorialComplete] = useState(isTutorialComplete)
+  const [social, setSocial] = useState<FriendsHub | null>(null)
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -82,7 +87,25 @@ export function Home() {
     return () => window.clearInterval(timer)
   }, [])
 
+  useEffect(() => {
+    const onComplete = () => setTutorialComplete(true)
+    window.addEventListener('bindet:tutorial-complete', onComplete)
+    return () => window.removeEventListener('bindet:tutorial-complete', onComplete)
+  }, [])
+
+  useEffect(() => {
+    if (!session?.access_token) {
+      setSocial(null)
+      return
+    }
+    void getFriends(session.access_token)
+      .then(setSocial)
+      .catch(() => setSocial(null))
+  }, [session?.access_token])
+
   const quote = SCHOLAR_QUOTES[index]
+  const pending = social?.requests.length ?? 0
+  const friendCount = social?.friends.length ?? 0
 
   return (
     <section className="home" aria-label="Home">
@@ -132,6 +155,32 @@ export function Home() {
           />
         ))}
       </div>
+
+      {session ? (
+        <a className="home__friends" href="#profile">
+          {pending > 0 ? (
+            <strong>{pending} friend request{pending === 1 ? '' : 's'} waiting</strong>
+          ) : friendCount > 0 ? (
+            <strong>{friendCount} friend{friendCount === 1 ? '' : 's'} · open league</strong>
+          ) : (
+            <strong>Add a friend with their code</strong>
+          )}
+          <span>Profile is where you send and accept requests.</span>
+        </a>
+      ) : null}
+
+      {!tutorialComplete ? (
+        <div className="home__tutorial">
+          <p className="home__tutorial-hint">New to Bindet?</p>
+          <button
+            type="button"
+            className="home__tutorial-btn"
+            onClick={() => startTutorial()}
+          >
+            Start tutorial
+          </button>
+        </div>
+      ) : null}
     </section>
   )
 }

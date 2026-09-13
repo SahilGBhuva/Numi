@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { getAccountProfile, saveAccountProfile, type Profile } from '../lib/api'
 import {
   requestPasswordReset,
-  saveAuthSession,
   signIn,
   signOut,
   signUp,
@@ -61,11 +60,15 @@ export function Settings({ session, onSession }: SettingsProps) {
         setMessage('Check your email for a reset link.')
         return
       }
-      const next = mode === 'login' ? await signIn(email, password) : await signUp(email, password)
-      if (!next.access_token) {
+      if (mode === 'login') {
+        onSession(await signIn(email, password))
+        setMessage('You are signed in.')
+        return
+      }
+      const { session: next } = await signUp(email, password)
+      if (!next) {
         setMessage('Check your email to confirm your account, then log in.')
       } else {
-        saveAuthSession(next)
         onSession(next)
         setMessage('You are signed in.')
       }
@@ -108,7 +111,7 @@ export function Settings({ session, onSession }: SettingsProps) {
       <h1>Settings</h1>
       <p>
         {session
-          ? `Signed in as ${session.user.email ?? 'your Bindit account'}.`
+          ? `Signed in as ${session.user.email ?? 'your Bindet account'}.`
           : 'Create an account to keep XP, streaks, and notes across devices.'}
       </p>
       {!session ? (

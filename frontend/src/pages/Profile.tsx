@@ -1,5 +1,16 @@
-import { useEffect, useState } from 'react'
-import { getAccountProfile, getProgress, type Profile as ProfileData, type Progress as ProgressData } from '../lib/api'
+import { useEffect, useState, type FormEvent } from 'react'
+import {
+  answerFriendRequest,
+  getAccountProfile,
+  getFriends,
+  getProgress,
+  removeFriend,
+  sendFriendRequest,
+  startFriendQuest,
+  type FriendsHub,
+  type Profile as ProfileData,
+  type Progress as ProgressData,
+} from '../lib/api'
 import type { AuthSession } from '../lib/auth'
 import { getStudentId, loadNotebook } from '../lib/session'
 import type { Course } from '../lib/types'
@@ -29,6 +40,10 @@ export function Profile({ session, onError }: ProfileProps) {
   const [stats, setStats] = useState<ProgressData | null>(null)
   const [courses, setCourses] = useState<Course[]>(() => loadNotebook().courses)
   const [activeCourse, setActiveCourse] = useState(() => loadNotebook().activeCourse)
+  const [social, setSocial] = useState<FriendsHub | null>(null)
+  const [friendCode, setFriendCode] = useState('')
+  const [socialBusy, setSocialBusy] = useState(false)
+  const [socialMessage, setSocialMessage] = useState('')
   const studentId = session?.user.id ?? getStudentId()
 
   useEffect(() => {
@@ -46,6 +61,75 @@ export function Profile({ session, onError }: ProfileProps) {
       .then(setProfile)
       .catch(() => onError?.('Could not load your profile.'))
   }, [session, onError])
+
+  async function refreshFriends() {
+    if (!session) {
+      setSocial(null)
+      return
+    }
+    try {
+      setSocial(await getFriends(session.access_token))
+    } catch {
+      onError?.('Could not load friends right now.')
+    }
+  }
+
+  useEffect(() => {
+    void refreshFriends()
+  }, [session?.access_token])
+
+  async function addFriend(event: FormEvent) {
+    event.preventDefault()
+    if (!session || !friendCode.trim()) return
+    setSocialBusy(true)
+    setSocialMessage('')
+    try {
+      await sendFriendRequest(friendCode.trim(), session.access_token)
+      setFriendCode('')
+      setSocialMessage('Friend request sent!')
+      await refreshFriends()
+    } catch (error) {
+      setSocialMessage(error instanceof Error ? error.message : 'Could not send that request.')
+    } finally {
+      setSocialBusy(false)
+    }
+  }
+
+  async function answerRequest(requestId: number, accept: boolean) {
+    if (!session) return
+    setSocialBusy(true)
+    try {
+      await answerFriendRequest(requestId, accept, session.access_token)
+      setSocialMessage(accept ? 'You are friends now!' : 'Request declined.')
+      await refreshFriends()
+    } finally {
+      setSocialBusy(false)
+    }
+  }
+
+  async function beginQuest(friendId: string) {
+    if (!session) return
+    setSocialBusy(true)
+    try {
+      await startFriendQuest(friendId, session.access_token)
+      setSocialMessage('Friend Quest started — earn 100 XP together this week!')
+      await refreshFriends()
+    } finally {
+      setSocialBusy(false)
+    }
+  }
+
+  async function unfriend(friendId: string) {
+    if (!session || !window.confirm('Remove this friend?')) return
+    setSocialBusy(true)
+    try {
+      await removeFriend(friendId, session.access_token)
+      setSocialMessage('Friend removed.')
+      await refreshFriends()
+    } finally {
+      setSocialBusy(false)
+    }
+  }
 
   useEffect(() => {
     const syncNotebook = () => {
@@ -111,17 +195,86 @@ export function Profile({ session, onError }: ProfileProps) {
           </div>
 
           <section className="profile-friends">
-            <h2>Friends</h2>
+            <h2>
+              Friends <span>{social?.friends.length ?? 0}</span>
+            </h2>
+            {session && profile?.friend_code ? (
+              <form className="friend-add" onSubmit={addFriend}>
+                <input
+                  value={friendCode}
+                  onChange={(event) => setFriendCode(event.target.value.toUpperCase())}
+                  placeholder="Friend code"
+                  maxLength={12}
+                  aria-label="Friend code"
+                />
+                <button type="submit" disabled={socialBusy || !friendCode.trim()}>
+                  Add
+                </button>
+              </form>
+            ) : null}
+            {social?.requests.map((request) => (
+              <div className="friend-request" key={request.request_id}>
+                <span>
+                  <strong>{request.display_name}</strong>
+                  <small>@{request.username}</small>
+                </span>
+                <button type="button" onClick={() => void answerRequest(request.request_id, true)} disabled={socialBusy}>
+                  Accept
+                </button>
+                <button
+                  className="is-quiet"
+                  type="button"
+                  onClick={() => void answerRequest(request.request_id, false)}
+                  disabled={socialBusy}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
             <div className="profile-friends__row">
-              <span className="profile-friends__avatar is-empty" aria-hidden="true" />
-              <span className="profile-friends__avatar is-empty" aria-hidden="true" />
-              <span className="profile-friends__avatar is-empty" aria-hidden="true" />
+              {social?.friends.slice(0, 5).map((friend) => (
+                <span className="profile-friends__avatar" key={friend.student_id} title={friend.display_name}>
+                  {friend.display_name.slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+              {!social?.friends.length ? (
+                <span className="profile-friends__avatar is-empty" aria-hidden="true">
+                  +
+                </span>
+              ) : null}
             </div>
+            {social?.friends.map((friend) => (
+              <div className="friend-mini" key={friend.student_id}>
+                <span>
+                  <strong>{friend.display_name}</strong>
+                  <small>
+                    🔥 {friend.streak} · {friend.total_xp} XP
+                  </small>
+                </span>
+                <button type="button" onClick={() => void beginQuest(friend.student_id)} disabled={socialBusy}>
+                  Quest
+                </button>
+                <button
+                  className="is-remove"
+                  type="button"
+                  onClick={() => void unfriend(friend.student_id)}
+                  disabled={socialBusy}
+                  aria-label={`Remove ${friend.display_name}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
             {!session || !profile?.friend_code ? (
               <p className="profile-friends__hint">Add friends with your tag in Settings</p>
             ) : (
               <p className="profile-friends__hint">Share tag {profile.friend_code}</p>
             )}
+            {socialMessage ? (
+              <p className="profile-social-message" role="status">
+                {socialMessage}
+              </p>
+            ) : null}
           </section>
 
           <div className="profile-records__streak">
@@ -131,6 +284,57 @@ export function Profile({ session, onError }: ProfileProps) {
         </div>
 
         <aside className="profile-panels">
+          <section className="profile-panel-section social-league">
+            <h2>Friends League</h2>
+            {!social?.leaderboard.length ? (
+              <p className="profile-panel__empty">Add a friend to start your weekly competition.</p>
+            ) : (
+              <ol className="friend-leaderboard">
+                {social.leaderboard.map((friend, index) => (
+                  <li key={friend.student_id} className={friend.student_id === studentId ? 'is-me' : ''}>
+                    <span className="friend-rank">{index + 1}</span>
+                    <span className="friend-face">{friend.display_name.slice(0, 1).toUpperCase()}</span>
+                    <span className="friend-name">
+                      <strong>{friend.student_id === studentId ? 'You' : friend.display_name}</strong>
+                      <small>{friend.active_today ? 'Active today' : `🔥 ${friend.streak} day streak`}</small>
+                    </span>
+                    <strong className="friend-xp">{friend.total_xp} XP</strong>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          <section className="profile-panel-section friend-quests">
+            <h2>Friend Quests</h2>
+            {social?.quests.map((quest) => (
+              <div className="friend-quest" key={quest.id}>
+                <div>
+                  <strong>You + {quest.friend_name}</strong>
+                  <span>
+                    {quest.progress_xp} / {quest.target_xp} XP
+                  </span>
+                </div>
+                <div className="profile-bar">
+                  <span style={{ width: `${Math.min(100, (quest.progress_xp / quest.target_xp) * 100)}%` }} />
+                </div>
+              </div>
+            ))}
+            {!social?.quests.length && social?.friends.length ? (
+              <button
+                className="quest-start"
+                type="button"
+                disabled={socialBusy}
+                onClick={() => void beginQuest(social.friends[0].student_id)}
+              >
+                Start a 100 XP quest with {social.friends[0].display_name}
+              </button>
+            ) : null}
+            {!social?.friends.length ? (
+              <p className="profile-panel__empty">Friend Quests unlock after you add a friend.</p>
+            ) : null}
+          </section>
+
           <section className="profile-panel-section">
             <h2>Currently Studying</h2>
             {courses.length === 0 ? (

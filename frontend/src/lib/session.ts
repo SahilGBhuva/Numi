@@ -1,48 +1,46 @@
-import type { Course, Notebook, NoteDeposit, Session } from './types'
+import type { Course, CourseAssignment, Notebook, NoteDeposit, Session } from './types'
 
 const STORAGE_KEY = 'cac-study-session'
 const STUDENT_ID_KEY = 'bindit-student-id'
 const LEGACY_STUDENT_ID_KEY = 'numi-student-id'
 const NOTEBOOK_KEY = 'numi-notebook'
 const AVATAR_KEY = 'numi-avatar'
+const PLANNER_KEY = 'bindet-planner'
+
+export const COURSE_TONES = [
+  '#FF1744',
+  '#FF6D00',
+  '#FFD600',
+  '#00E676',
+  '#00B0FF',
+  '#3D5AFE',
+  '#D500F9',
+  '#FF4081',
+]
 
 const emptyNotebook: Notebook = {
-  courses: [{ name: 'Biology', units: [], tone: '#2a6ea8' }],
+  courses: [{ name: 'Biology', units: [], tone: COURSE_TONES[0] }],
   activeCourse: 'Biology',
   activeUnit: '',
   deposits: [],
 }
 
-export const COURSE_TONES = ['#2a6ea8', '#8a4aad', '#2f8f5c', '#c48a28', '#c45e4e', '#1f8a9c', '#6e4aa0']
-
-const PINNED_TONES: Record<string, string> = {
-  Biology: '#2a6ea8',
-  Chemistry: '#8a4aad',
-}
-
-function hashTone(name: string) {
-  let n = 0
-  for (let i = 0; i < name.length; i += 1) n = (n * 31 + name.charCodeAt(i)) >>> 0
-  return COURSE_TONES[n % COURSE_TONES.length]
-}
-
 export function withCourseTones(courses: Course[]): Course[] {
-  const taken = new Set(courses.map((course) => course.tone).filter(Boolean) as string[])
+  const used = new Set(
+    courses.map((course) => course.tone?.toLowerCase()).filter((tone): tone is string => Boolean(tone)),
+  )
   return courses.map((course, index) => {
     if (course.tone) return course
-    const preferred = PINNED_TONES[course.name] ?? hashTone(course.name)
-    const tone =
-      !taken.has(preferred)
-        ? preferred
-        : (COURSE_TONES.find((item) => !taken.has(item)) ?? COURSE_TONES[index % COURSE_TONES.length])
-    taken.add(tone)
+    const unused = COURSE_TONES.find((tone) => !used.has(tone.toLowerCase()))
+    const tone = unused ?? COURSE_TONES[index % COURSE_TONES.length]
+    used.add(tone.toLowerCase())
     return { ...course, tone }
   })
 }
 
 export function pickCourseTone(courses: Course[]): string {
-  const taken = new Set(courses.map((course) => course.tone).filter(Boolean) as string[])
-  return COURSE_TONES.find((item) => !taken.has(item)) ?? COURSE_TONES[courses.length % COURSE_TONES.length]
+  const used = new Set(courses.map((course) => course.tone?.toLowerCase()))
+  return COURSE_TONES.find((tone) => !used.has(tone.toLowerCase())) ?? COURSE_TONES[courses.length % COURSE_TONES.length]
 }
 
 export function getStudentId(): string {
@@ -67,7 +65,14 @@ export function loadNotebook(): Notebook {
       return emptyNotebook
     }
     const courses: Course[] = withCourseTones(
-      parsed.courses.map((course) => (typeof course === 'string' ? { name: course, units: [] } : course)),
+      parsed.courses.map((course) => {
+        if (typeof course === 'string') return { name: course, units: [], stashedUnits: [] }
+        const units = Array.isArray(course.units) ? course.units.filter((name) => typeof name === 'string') : []
+        const stashedUnits = Array.isArray(course.stashedUnits)
+          ? course.stashedUnits.filter((name) => typeof name === 'string' && !units.includes(name))
+          : []
+        return { ...course, units, stashedUnits }
+      }),
     )
     if (courses.length === 0) {
       return {
@@ -96,8 +101,40 @@ export function unitsFor(courses: Course[], courseName: string): string[] {
   return courses.find((course) => course.name === courseName)?.units ?? []
 }
 
+export function stashedUnitsFor(courses: Course[], courseName: string): string[] {
+  return courses.find((course) => course.name === courseName)?.stashedUnits ?? []
+}
+
 export function notesFor(deposits: NoteDeposit[], course: string, unit: string): NoteDeposit[] {
   return deposits.filter((item) => item.course === course && item.unit === unit)
+}
+
+export function loadPlanner(): CourseAssignment[] {
+  const raw = localStorage.getItem(PLANNER_KEY)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as CourseAssignment[]
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item) => item && typeof item.id === 'string' && typeof item.course === 'string')
+  } catch {
+    return []
+  }
+}
+
+export function savePlanner(items: CourseAssignment[]): void {
+  localStorage.setItem(PLANNER_KEY, JSON.stringify(items))
+}
+
+export function assignmentsFor(items: CourseAssignment[], course: string): CourseAssignment[] {
+  return items.filter((item) => item.course === course)
+}
+
+export function removePlannerForCourse(course: string): void {
+  savePlanner(loadPlanner().filter((item) => item.course !== course))
+}
+
+export function renamePlannerCourse(from: string, to: string): void {
+  savePlanner(loadPlanner().map((item) => (item.course === from ? { ...item, course: to } : item)))
 }
 
 export function loadAvatar(): string {
@@ -109,10 +146,43 @@ export function saveAvatar(dataUrl: string): void {
 }
 
 export function fileToCourseImageDataUrl(file: File): Promise<string> {
-  return fileToCoverDataUrl(file, 480, 640)
+  const dpr = Math.min(typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, 2)
+  const max = Math.round(1600 * dpr)
+  return fileToFitDataUrl(file, max, max, 0.92)
 }
 
-function fileToCoverDataUrl(file: File, width: number, height: number): Promise<string> {
+function fileToFitDataUrl(file: File, maxWidth: number, maxHeight: number, quality = 0.84): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read image'))
+    reader.onload = () => {
+      const image = new Image()
+      image.onload = () => {
+        const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1)
+        const width = Math.max(1, Math.round(image.width * scale))
+        const height = Math.max(1, Math.round(image.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(String(reader.result))
+          return
+        }
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        ctx.drawImage(image, 0, 0, width, height)
+        const webp = canvas.toDataURL('image/webp', quality)
+        resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality))
+      }
+      image.onerror = () => reject(new Error('Could not load image'))
+      image.src = String(reader.result)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function fileToCoverDataUrl(file: File, width: number, height: number, quality = 0.84): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error('Could not read image'))
@@ -127,11 +197,14 @@ function fileToCoverDataUrl(file: File, width: number, height: number): Promise<
           resolve(String(reader.result))
           return
         }
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
         const scale = Math.max(width / image.width, height / image.height)
         const dw = image.width * scale
         const dh = image.height * scale
         ctx.drawImage(image, (width - dw) / 2, (height - dh) / 2, dw, dh)
-        resolve(canvas.toDataURL('image/jpeg', 0.84))
+        const webp = canvas.toDataURL('image/webp', quality)
+        resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality))
       }
       image.onerror = () => reject(new Error('Could not load image'))
       image.src = String(reader.result)

@@ -6,9 +6,16 @@
   flex-direction: column;
   width: 248px;
   min-height: 100vh;
-  padding: 28px 22px 32px;
+  padding: 28px 18px 32px 22px;
   background: #0b1622;
   border-right: 1px solid rgba(232, 223, 176, 0.12);
+  overflow: visible;
+  transition: width 0.42s cubic-bezier(0.22, 1.2, 0.32, 1), padding 0.42s cubic-bezier(0.22, 1.2, 0.32, 1);
+}
+
+.numi-rail.is-shut {
+  width: 88px;
+  padding: 28px 10px 32px 10px;
 }
 
 .numi-rail__brand {
@@ -16,21 +23,38 @@
   align-items: center;
   gap: 10px;
   margin: 0 6px 28px;
-  color: #e0a045;
+  color: #c9b6ff;
   text-decoration: none;
   font-size: 34px;
   font-weight: 800;
   letter-spacing: -0.04em;
   line-height: 1;
+  min-width: 0;
 }
 
-.numi-rail__gear {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: #e0a045;
-  stroke-width: 1.8;
-  stroke-linecap: round;
+.numi-rail.is-shut .numi-rail__brand {
+  margin: 0 auto 22px;
+  justify-content: center;
+}
+
+.numi-rail__word {
+  overflow: hidden;
+  max-width: 8em;
+  transition: max-width 0.32s ease, opacity 0.24s ease, transform 0.32s ease;
+}
+
+.numi-rail.is-shut .numi-rail__word {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
+.numi-rail__mark {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  flex: none;
+  filter: drop-shadow(0 4px 6px rgba(46, 28, 104, 0.35));
 }
 
 .numi-rail__list {
@@ -55,15 +79,26 @@
   color: #f4efe0;
   text-decoration: none;
   outline: none;
+  overflow: visible;
+  transition: padding 0.32s ease, min-height 0.32s ease, border-radius 0.32s ease;
 }
 
-.numi-rail__item.is-home { --item-accent: #7eb8e8; }
-.numi-rail__item.is-progress { --item-accent: #6f9a7a; }
-.numi-rail__item.is-games { --item-accent: #d36b4f; }
-.numi-rail__item.is-quests { --item-accent: #e0a045; }
-.numi-rail__item.is-profile { --item-accent: #b57ad4; }
-.numi-rail__item.is-settings { --item-accent: #c8bf8a; }
-.numi-rail__item.is-more { --item-accent: #a78bfa; }
+.numi-rail.is-shut .numi-rail__item {
+  justify-content: center;
+  gap: 0;
+  min-height: 52px;
+  padding: 8px 6px;
+  border-radius: 12px 4px 4px 12px;
+}
+
+.numi-rail__item.is-home { --item-accent: var(--accent-home); }
+.numi-rail__item.is-tools { --item-accent: var(--accent-tools); }
+.numi-rail__item.is-progress { --item-accent: var(--accent-progress); }
+.numi-rail__item.is-games { --item-accent: var(--accent-games); }
+.numi-rail__item.is-goals { --item-accent: var(--accent-goals); }
+.numi-rail__item.is-profile { --item-accent: var(--accent-profile); }
+.numi-rail__item.is-settings { --item-accent: var(--accent-settings); }
+.numi-rail__item.is-more { --item-accent: var(--accent-more); }
 
 .numi-rail__icon {
   display: grid;
@@ -73,10 +108,12 @@
   flex: none;
 }
 
-.numi-rail__icon svg {
+.numi-rail__icon svg,
+.numi-rail__icon img {
   width: 34px;
   height: 34px;
   overflow: visible;
+  object-fit: contain;
 }
 
 .numi-rail__label {
@@ -84,6 +121,37 @@
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 12em;
+  transition: max-width 0.32s ease, opacity 0.2s ease, transform 0.32s ease;
+}
+
+.numi-rail.is-shut .numi-rail__label {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+.numi-rail__ear {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  right: -2px;
+  width: 0;
+  border-radius: 2px 6px 6px 2px;
+  background: var(--item-accent);
+  opacity: 0;
+  transition: width 0.28s ease, opacity 0.28s ease;
+}
+
+.numi-rail.is-shut .numi-rail__ear {
+  width: 7px;
+  opacity: 1;
+}
+
+.numi-rail.is-shut .numi-rail__item.is-active .numi-rail__ear {
+  width: 11px;
 }
 
 .numi-rail__item:hover {
@@ -107,29 +175,68 @@
     0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
-.numi-rail__item.is-active::before,
-.numi-rail__item.is-active::after {
-  content: '';
+.numi-rail__snap {
   position: absolute;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #f0d48a, #b8863a 62%, #6d4a1e);
-  box-shadow: inset 0 0 0 1px rgba(40, 24, 8, 0.4);
+  top: 0;
+  right: -10px;
+  z-index: 3;
+  width: 20px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
-.numi-rail__item.is-active::before {
-  top: 8px;
-  right: 10px;
+.numi-rail__strap {
+  position: absolute;
+  top: 6%;
+  bottom: 6%;
+  left: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, #c9b6ff 0%, #8d74e8 42%, #6d55f7 100%);
+  box-shadow:
+    inset 1px 0 0 rgba(255, 255, 255, 0.28),
+    1px 0 5px rgba(46, 28, 104, 0.28);
+  transition: width 0.2s ease, left 0.42s ease, box-shadow 0.2s ease;
 }
 
-.numi-rail__item.is-active::after {
-  bottom: 8px;
-  right: 10px;
+.numi-rail.is-shut .numi-rail__strap {
+  left: 8px;
 }
+
+.numi-rail__snap:hover .numi-rail__strap,
+.numi-rail__snap:focus-visible .numi-rail__strap {
+  width: 4px;
+  box-shadow:
+    inset 1px 0 0 rgba(255, 255, 255, 0.4),
+    0 0 10px rgba(141, 116, 232, 0.55);
+}
+
+.numi-rail__snap:focus-visible {
+  outline: none;
+}
+
+.numi-rail__snap:focus-visible .numi-rail__strap {
+  box-shadow:
+    0 0 0 2px #0b1622,
+    0 0 0 4px #c9b6ff;
+}
+
+.numi-rail__list li:nth-child(1) .numi-rail__label { transition-delay: 0.02s; }
+.numi-rail__list li:nth-child(2) .numi-rail__label { transition-delay: 0.04s; }
+.numi-rail__list li:nth-child(3) .numi-rail__label { transition-delay: 0.06s; }
+.numi-rail__list li:nth-child(4) .numi-rail__label { transition-delay: 0.08s; }
+.numi-rail__list li:nth-child(5) .numi-rail__label { transition-delay: 0.1s; }
+.numi-rail__list li:nth-child(6) .numi-rail__label { transition-delay: 0.12s; }
+.numi-rail__list li:nth-child(7) .numi-rail__label { transition-delay: 0.14s; }
+.numi-rail__list li:nth-child(8) .numi-rail__label { transition-delay: 0.16s; }
 
 @media (max-width: 860px) {
-  .numi-rail {
+  .numi-rail,
+  .numi-rail.is-shut {
     width: 100%;
     min-height: 0;
     padding: 12px 12px 4px;
@@ -137,9 +244,22 @@
     border-bottom: 1px solid rgba(232, 223, 176, 0.12);
   }
 
-  .numi-rail__brand {
+  .numi-rail__brand,
+  .numi-rail.is-shut .numi-rail__brand {
     margin: 0 4px 10px;
-    font-size: 26px;
+    justify-content: flex-start;
+  }
+
+  .numi-rail__word,
+  .numi-rail.is-shut .numi-rail__word {
+    max-width: 8em;
+    opacity: 1;
+    transform: none;
+  }
+
+  .numi-rail__mark {
+    width: 32px;
+    height: 32px;
   }
 
   .numi-rail__list {
@@ -149,19 +269,39 @@
     padding-bottom: 8px;
   }
 
-  .numi-rail__item {
+  .numi-rail__item,
+  .numi-rail.is-shut .numi-rail__item {
     min-height: 48px;
     padding: 6px 10px;
     flex: none;
+    justify-content: flex-start;
+    gap: 14px;
+    border-radius: 16px;
   }
 
-  .numi-rail__label {
+  .numi-rail__label,
+  .numi-rail.is-shut .numi-rail__label {
     font-size: 12px;
     letter-spacing: 0.06em;
+    max-width: 12em;
+    opacity: 1;
+    transform: none;
   }
 
-  .numi-rail__item.is-active::before,
-  .numi-rail__item.is-active::after {
+  .numi-rail__ear,
+  .numi-rail__snap {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .numi-rail,
+  .numi-rail__word,
+  .numi-rail__item,
+  .numi-rail__label,
+  .numi-rail__ear,
+  .numi-rail__strap {
+    transition: none;
   }
 }

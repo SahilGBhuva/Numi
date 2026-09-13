@@ -45,8 +45,13 @@ export type NoteDeposit = {
 export type Course = {
   name: string
   units: string[]
+  stashedUnits?: string[]
   tone?: string
   image?: string
+  tabLabel?: string
+  coverX?: number
+  coverY?: number
+  coverZoom?: number
 }
 
 export type Notebook = {
@@ -54,6 +59,17 @@ export type Notebook = {
   activeCourse: string
   activeUnit: string
   deposits: NoteDeposit[]
+}
+
+export type AssignmentPriority = 'high' | 'medium' | 'low'
+
+export type CourseAssignment = {
+  id: string
+  course: string
+  title: string
+  due: string
+  priority: AssignmentPriority
+  done: boolean
 }
 
 export type UnitVerdict = 'locked' | 'seeded' | 'warming' | 'rising' | 'steady' | 'sharp' | 'slipping' | 'stuck'

@@ -4,7 +4,8 @@ export function Games() {
   return (
     <section className="board">
       <h1>Games</h1>
-      <p>Study games will land here. Pick a unit on Home, then come back to play.</p>
+      <p>Study games will land here. Pick a unit in Tools, then come back to play.</p>
+      <span className="board__tabs" aria-hidden="true"><i /><i /><i /></span>
       <div className="board__grid">
         <article>
           <h2>Arcade</h2>
