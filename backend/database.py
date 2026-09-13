@@ -12,13 +12,13 @@ from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Integer, MetaData, String, Table, Text,
     UniqueConstraint, and_, create_engine, delete, func, inspect, or_, select, update,
 )
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.exc import ArgumentError
 
 
 load_dotenv(Path(__file__).with_name(".env"))
 
 DEFAULT_DB_PATH = Path(__file__).with_name("pocket_tutor.db")
-VERCEL_DB_PATH = Path("/tmp/pocket_tutor.db")
 metadata = MetaData()
 
 student_progress = Table(
@@ -199,22 +199,54 @@ def enable_row_level_security(connection, tables) -> None:
         connection.exec_driver_sql(f"ALTER TABLE IF EXISTS {table} ENABLE ROW LEVEL SECURITY")
 
 
+class DatabaseConfigurationError(RuntimeError):
+    """Raised instead of silently storing production data somewhere temporary."""
+
+
+def is_production() -> bool:
+    """Vercel sets VERCEL on every deployment; APP_ENV=production covers other hosts."""
+    return bool(os.getenv("VERCEL")) or os.getenv("APP_ENV", "").strip().lower() == "production"
+
+
 def sqlite_path() -> Path:
     configured_path = os.getenv("POCKET_TUTOR_DB_PATH")
     if configured_path:
         return Path(configured_path)
-    if os.getenv("VERCEL"):
-        return VERCEL_DB_PATH
     return DEFAULT_DB_PATH
 
 
 def database_url() -> str:
+    """Resolve the database URL. SQLite is only ever used for local dev and tests.
+
+    In production a missing or non-Postgres DATABASE_URL raises instead of
+    falling back to SQLite, which on a serverless host lives on ephemeral disk
+    and loses every write when the instance is recycled.
+    """
+    production = is_production()
     if os.getenv("POCKET_TUTOR_DB_PATH"):
+        if production:
+            raise DatabaseConfigurationError(
+                "POCKET_TUTOR_DB_PATH forces a local SQLite database and cannot be used in production. "
+                "Unset it and configure DATABASE_URL with a PostgreSQL connection string."
+            )
         return f"sqlite:///{sqlite_path()}"
     configured_url = os.getenv("DATABASE_URL")
-    if not configured_url:
+    if not configured_url or not configured_url.strip():
+        if production:
+            raise DatabaseConfigurationError(
+                "DATABASE_URL is not set. Production refuses to fall back to SQLite because its data would be "
+                "lost whenever the server instance is replaced. Set DATABASE_URL to a PostgreSQL connection string "
+                "(for Supabase, the transaction pooler URI on port 6543)."
+            )
         return f"sqlite:///{sqlite_path()}"
 
+    url = _normalized_database_url(configured_url)
+    if production:
+        _require_postgres_url(url)
+    return url
+
+
+def _normalized_database_url(configured_url: str) -> str:
     url = configured_url.strip()
     if url.startswith("DATABASE_URL="):
         url = url.removeprefix("DATABASE_URL=").strip()
@@ -237,6 +269,29 @@ def database_url() -> str:
     if ("supabase.co" in url or "supabase.com" in url) and "sslmode=" not in url:
         url += ("&" if "?" in url else "?") + "sslmode=require"
     return url
+
+
+def _require_postgres_url(url: str) -> None:
+    # Messages never include the URL itself, because it carries the database password.
+    try:
+        parsed = make_url(url)
+    except ArgumentError as error:
+        raise DatabaseConfigurationError(
+            "DATABASE_URL could not be parsed as a database URL. Expected postgresql://user:password@host:port/database."
+        ) from error
+    if parsed.get_backend_name() != "postgresql":
+        raise DatabaseConfigurationError(
+            f"DATABASE_URL must point to PostgreSQL in production, but it uses '{parsed.get_backend_name()}'."
+        )
+    if not parsed.host or not parsed.database:
+        raise DatabaseConfigurationError(
+            "DATABASE_URL is missing a host or database name. Expected postgresql://user:password@host:port/database."
+        )
+
+
+def validate_database_configuration() -> None:
+    """Fail at startup, not on the first request, when production has no durable database."""
+    database_url()
 
 
 def _uses_supabase_pooler(url: str) -> bool:

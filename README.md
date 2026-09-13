@@ -40,6 +40,6 @@ Docs: http://127.0.0.1:8000/docs
 
 Import the repository with the root directory set to `./`. The root `vercel.json` deploys the Vite frontend and FastAPI backend together, routes `/api/*` to FastAPI, and sends every other request to the frontend.
 
-The backend uses PostgreSQL automatically when `DATABASE_URL` is set. Without that variable it falls back to SQLite; on Vercel, the fallback lives in writable `/tmp` storage and may reset when a serverless instance is replaced. Use Supabase/Postgres through `DATABASE_URL` for durable learner progress.
+The backend uses PostgreSQL when `DATABASE_URL` is set. Local development and tests fall back to SQLite when it is not. In production (any Vercel deployment, or `APP_ENV=production`), the backend refuses to start unless `DATABASE_URL` is a valid PostgreSQL URL, because a SQLite file on serverless storage loses every write when the instance is replaced. This applies to Preview deployments too, so set `DATABASE_URL` for every Vercel environment you deploy.
 
 Bindit uses Supabase Auth for account identity, so saved progress can stay attached to the authenticated learner rather than a browser-only identity.

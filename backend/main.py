@@ -18,6 +18,9 @@ import questions
 import note_ingestion
 import note_store
 
+# Refuse to start in production without a durable PostgreSQL database.
+database.validate_database_configuration()
+
 app = FastAPI(
     title="Bindit API",
     version="1.2.0",
