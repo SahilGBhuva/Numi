@@ -176,6 +176,29 @@ progress_claims = Table(
 )
 
 
+# Tables created by metadata.create_all() that must never be served unrestricted
+# through Supabase's PostgREST API. create_all() skips existing tables, so a
+# table it creates would otherwise have RLS off even after the migration ran.
+# Policies live in supabase/migrations; with RLS on and no policy, access is
+# denied, and the backend (the table owner) is unaffected either way.
+RLS_TABLES = (
+    "progress_claims",
+    "social_action_events",
+    "social_blocks",
+    "social_notifications",
+    "social_reactions",
+    "social_reports",
+    "study_group_members",
+    "study_groups",
+    "xp_events",
+)
+
+
+def enable_row_level_security(connection, tables) -> None:
+    for table in tables:
+        connection.exec_driver_sql(f"ALTER TABLE IF EXISTS {table} ENABLE ROW LEVEL SECURITY")
+
+
 def sqlite_path() -> Path:
     configured_path = os.getenv("POCKET_TUTOR_DB_PATH")
     if configured_path:
@@ -247,7 +270,7 @@ def init_db() -> None:
     metadata.create_all(active_engine)
     if active_engine.dialect.name == "postgresql":
         with active_engine.begin() as connection:
-            connection.exec_driver_sql("ALTER TABLE progress_claims ENABLE ROW LEVEL SECURITY")
+            enable_row_level_security(connection, RLS_TABLES)
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_path varchar(500) NOT NULL DEFAULT ''")
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS daily_goal integer NOT NULL DEFAULT 20")
             connection.exec_driver_sql("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS discoverable boolean NOT NULL DEFAULT true")

@@ -27,6 +27,9 @@ notes = Table(
 def init_notes() -> None:
     database.init_db()
     note_metadata.create_all(database.engine())
+    if database.engine().dialect.name == 'postgresql':
+        with database.engine().begin() as connection:
+            database.enable_row_level_security(connection, ('study_notes',))
 
 
 def save_note(student_id: str, course: str, unit: str, file_name: str, content_type: str, text: str, size_bytes: int) -> dict:
