@@ -107,6 +107,21 @@ export async function signUp(email: string, password: string) {
   return { session, needsConfirmation: !session }
 }
 
+export async function resendSignupConfirmation(email: string) {
+  const settings = await config()
+  const response = await fetch(`${settings.supabase_url}/auth/v1/resend`, {
+    method: 'POST',
+    headers: { apikey: settings.supabase_anon_key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'signup', email, options: { emailRedirectTo: appReturnUrl() } }),
+  })
+  const text = await response.text()
+  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {}
+  if (!response.ok) {
+    const message = [data.msg, data.error_description, data.message].find((value) => typeof value === 'string')
+    throw new Error((message as string | undefined) ?? 'Could not resend the confirmation email.')
+  }
+}
+
 export async function signIn(email: string, password: string) {
   const session = asSession(await authRequest('token?grant_type=password', { email, password }))
   if (!session) throw new Error('Could not create a login session.')
