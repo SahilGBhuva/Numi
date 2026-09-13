@@ -793,7 +793,11 @@ def _friend_streak(first_id: str, second_id: str) -> int:
     for owner_id, created_at in rows:
         active[owner_id].add(created_at.date())
     shared = active[first_id] & active[second_id]
-    cursor = date.today() if date.today() in shared else date.today() - timedelta(days=1)
+    # XP event timestamps are stored in UTC, so their calendar-day comparison
+    # must use the same clock. Mixing local `date.today()` with UTC timestamps
+    # breaks shared streaks for several hours around midnight UTC.
+    today_utc = datetime.now(timezone.utc).date()
+    cursor = today_utc if today_utc in shared else today_utc - timedelta(days=1)
     streak = 0
     while cursor in shared:
         streak += 1

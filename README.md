@@ -1,10 +1,10 @@
-# bindet
+# Bindit
 
-bindet is a learning platform that helps students connect ideas, organize what they learn, and build consistent study habits. The repo contains a Vite + React frontend, a FastAPI learning API, Supabase authentication, and persistent progress storage.
+Bindit is a learning platform that helps students connect ideas, organize what they learn, and build consistent study habits. The repo contains a Vite + React frontend, a FastAPI learning API, Supabase authentication, and persistent progress storage.
 
 ## Folders
 
-- `frontend/` — bindet web app built with Vite, React, and TypeScript
+- `frontend/` — Bindit web app built with Vite, React, and TypeScript
 - `backend/` — FastAPI API for questions, answers, authentication, and progress
 
 The pieces are connected end-to-end: the React experience requests questions, FastAPI checks answers and awards XP, and the database saves each learner's progress.
@@ -42,4 +42,4 @@ Import the repository with the root directory set to `./`. The root `vercel.json
 
 The backend uses PostgreSQL automatically when `DATABASE_URL` is set. Without that variable it falls back to SQLite; on Vercel, the fallback lives in writable `/tmp` storage and may reset when a serverless instance is replaced. Use Supabase/Postgres through `DATABASE_URL` for durable learner progress.
 
-bindet uses Supabase Auth for account identity, so saved progress can stay attached to the authenticated learner rather than a browser-only identity.
+Bindit uses Supabase Auth for account identity, so saved progress can stay attached to the authenticated learner rather than a browser-only identity.

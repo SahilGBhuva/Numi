@@ -104,7 +104,7 @@ async function request<T>(path: string, options?: RequestInit, accessToken?: str
   const response = await fetch(`${API_URL}${path}`, { ...options, headers })
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(data?.detail ?? `bindet could not complete that request (${response.status}).`)
+    throw new Error(data?.detail ?? `Bindit could not complete that request (${response.status}).`)
   }
   return response.json() as Promise<T>
 }
@@ -197,7 +197,7 @@ export async function getProgress(studentId: string, accessToken?: string): Prom
   if (response.status === 404) return null
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(data?.detail ?? `bindet could not load progress (${response.status}).`)
+    throw new Error(data?.detail ?? `Bindit could not load progress (${response.status}).`)
   }
   return response.json() as Promise<Progress>
 }
@@ -207,7 +207,7 @@ export async function getAccountProfile(accessToken: string): Promise<Profile | 
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (response.status === 404) return null
-  if (!response.ok) throw new Error('Could not load your bindet profile.')
+  if (!response.ok) throw new Error('Could not load your Bindit profile.')
   return response.json() as Promise<Profile>
 }
 

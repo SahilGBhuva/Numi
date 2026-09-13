@@ -41,13 +41,6 @@ function AppShell() {
     <div className="app-shell">
       <SiteSidebar active={screen} />
       <main className={`sheet is-${screen}`}>
-        <span className="blob blob-a" aria-hidden="true" />
-        <span className="blob blob-b" aria-hidden="true" />
-        <div className="binder-sparks" aria-hidden="true">
-          <span className="binder-sparks__paper" />
-          <span className="binder-sparks__tab" />
-          <span className="binder-sparks__ring" />
-        </div>
         {screen === 'home' ? <Home session={session} /> : null}
         {screen === 'tools' ? <Tools accessToken={session?.access_token} /> : null}
         {screen === 'progress' ? <Progress session={session} /> : null}

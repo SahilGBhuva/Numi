@@ -102,7 +102,7 @@ export function Settings({ session, onSession }: SettingsProps) {
   function logout() {
     signOut()
     onSession(null)
-    setMessage('Signed out. You can keep using bindet as a guest.')
+    setMessage('Signed out. You can keep using Bindit as a guest.')
   }
 
   return (
@@ -110,7 +110,7 @@ export function Settings({ session, onSession }: SettingsProps) {
       <h1>Settings</h1>
       <p>
         {session
-          ? `Signed in as ${session.user.email ?? 'your bindet account'}.`
+          ? `Signed in as ${session.user.email ?? 'your Bindit account'}.`
           : 'Create an account to keep XP, streaks, and notes across devices.'}
       </p>
       {!session ? (

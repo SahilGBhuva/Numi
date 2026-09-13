@@ -110,7 +110,7 @@ export function Profile({ session, onError }: ProfileProps) {
 
   async function shareFriendId() {
     if (!profile?.friend_code) return
-    const share = { title: 'Add me on bindet', text: `Add me on bindet with friend ID ${profile.friend_code}`, url: window.location.origin }
+    const share = { title: 'Add me on Bindit', text: `Add me on Bindit with friend ID ${profile.friend_code}`, url: window.location.origin }
     try {
       if (navigator.share) await navigator.share(share)
       else {
@@ -153,7 +153,7 @@ export function Profile({ session, onError }: ProfileProps) {
   async function reportFriend(friendId: string) {
     if (!session || !window.confirm('Send a safety report about this person?')) return
     await reportSocialUser(friendId, session.access_token)
-    setSocialMessage('Report sent. Thank you for helping keep bindet safe.')
+    setSocialMessage('Report sent. Thank you for helping keep Bindit safe.')
   }
 
   async function answerRequest(requestId: number, accept: boolean) {
