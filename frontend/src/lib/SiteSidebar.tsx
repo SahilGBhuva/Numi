@@ -6,48 +6,77 @@ const RAIL_KEY = 'bindet-rail-shut'
 export const SCREENS = ['home', 'tools', 'progress', 'games', 'goals', 'profile', 'settings', 'more'] as const
 export type Screen = (typeof SCREENS)[number]
 
-const ITEMS: { id: Screen; label: string; hint: string }[] = [
-  { id: 'home', label: 'Home', hint: 'Overview' },
-  { id: 'tools', label: 'Workspace', hint: 'Notes + practice' },
-  { id: 'progress', label: 'Progress', hint: 'Momentum' },
-  { id: 'games', label: 'Games', hint: 'Quick reps' },
-  { id: 'goals', label: 'Quests', hint: 'Next wins' },
-  { id: 'profile', label: 'Profile', hint: 'Friends' },
-  { id: 'settings', label: 'Settings', hint: 'Preferences' },
-  { id: 'more', label: 'More', hint: 'Everything else' },
+type NavItem = { id: Screen; label: string }
+
+const STUDY_ITEMS: NavItem[] = [
+  { id: 'home', label: 'Home' },
+  { id: 'tools', label: 'Workspace' },
+  { id: 'progress', label: 'Progress' },
+  { id: 'games', label: 'Games' },
+  { id: 'goals', label: 'Goals' },
+]
+
+const ACCOUNT_ITEMS: NavItem[] = [
+  { id: 'profile', label: 'Profile' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'more', label: 'More' },
 ]
 
 function Mark({ kind }: { kind: Screen }) {
   const common = {
     fill: 'none',
     stroke: 'currentColor',
-    strokeWidth: 1.8,
+    strokeWidth: 1.75,
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
   }
 
   if (kind === 'home') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4.5 10.5 12 4l7.5 6.5V20H4.5z" /><path {...common} d="M9.5 20v-5.5h5V20" /></svg>
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4.5 10.4 12 4l7.5 6.4v9.1H4.5z" /><path {...common} d="M9.4 19.5v-5.4h5.2v5.4" /></svg>
   }
   if (kind === 'tools') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4 6.5h16M6.5 4v5M17.5 4v5M5 11.5h14v8H5z" /><path {...common} d="M8 15h4M8 17.5h7" /></svg>
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M5 4.5h5.5v15H5zM13.5 4.5H19v6h-5.5zM13.5 13.5H19v6h-5.5z" /></svg>
   }
   if (kind === 'progress') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4 19V9m6 10V5m6 14v-7m4 7H2.5" /></svg>
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4 19V11m5.3 8V6m5.4 13V9.5M20 19V4" /></svg>
   }
   if (kind === 'games') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M7.5 8h9a4.5 4.5 0 0 1 4.2 6.1l-1 2.6a2.5 2.5 0 0 1-4.1 1l-1.2-1.2H9.6l-1.2 1.2a2.5 2.5 0 0 1-4.1-1l-1-2.6A4.5 4.5 0 0 1 7.5 8Z" /><path {...common} d="M7 12.5h4M9 10.5v4M16.5 12h.01M18.5 14h.01" /></svg>
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M7.4 8.2h9.2a4.4 4.4 0 0 1 4.1 6l-1 2.5a2.4 2.4 0 0 1-4 1l-1.3-1.3H9.6l-1.3 1.3a2.4 2.4 0 0 1-4-1l-1-2.5a4.4 4.4 0 0 1 4.1-6Z" /><path {...common} d="M7.2 12.5h4M9.2 10.5v4M16.3 12h.01M18.4 14h.01" /></svg>
   }
   if (kind === 'goals') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M5 4.5h14v15H5z" /><path {...common} d="m8 10 2 2 5-5M8 16h8" /></svg>
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle {...common} cx="12" cy="12" r="7.5" /><circle {...common} cx="12" cy="12" r="3.2" /><path {...common} d="M12 4V2.8M20 12h1.2" /></svg>
   }
   if (kind === 'profile') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle {...common} cx="12" cy="8" r="3.5" /><path {...common} d="M5.5 20c.7-4 3-6 6.5-6s5.8 2 6.5 6" /></svg>
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle {...common} cx="12" cy="8" r="3.4" /><path {...common} d="M5.4 19.6c.7-3.8 3-5.8 6.6-5.8s5.9 2 6.6 5.8" /></svg>
   }
   if (kind === 'settings') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M5 7h14M5 17h14M8.5 4v6M15.5 14v6" /></svg>
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle {...common} cx="12" cy="12" r="3" /><path {...common} d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" /></svg>
   }
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="19" cy="12" r="1.2" fill="currentColor" /></svg>
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor" /><circle cx="12" cy="12" r="1.25" fill="currentColor" /><circle cx="19" cy="12" r="1.25" fill="currentColor" /></svg>
+}
+
+function NavGroup({ label, items, active }: { label: string; items: NavItem[]; active: Screen }) {
+  return (
+    <section className="numi-rail__section" aria-label={label}>
+      <span className="numi-rail__section-label">{label}</span>
+      <ol className="numi-rail__list">
+        {items.map((item) => (
+          <li key={item.id}>
+            <a
+              className={`numi-rail__item is-${item.id} ${active === item.id ? 'is-active' : ''}`}
+              href={`#${item.id}`}
+              aria-current={active === item.id ? 'page' : undefined}
+              title={item.label}
+            >
+              <span className="numi-rail__icon"><Mark kind={item.id} /></span>
+              <span className="numi-rail__label">{item.label}</span>
+              {active === item.id ? <span className="numi-rail__active-dot" aria-hidden="true" /> : null}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
 }
 
 type SiteSidebarProps = {
@@ -69,8 +98,9 @@ export function SiteSidebar({ active }: SiteSidebarProps) {
     <nav className={`numi-rail ${shut ? 'is-shut' : ''}`} aria-label="Main navigation">
       <div className="numi-rail__top">
         <a className="numi-rail__brand" href="#home" aria-label="bindit home">
-          <span className="numi-rail__brand-mark">
-            <img className="numi-rail__mark" src="/bindit-mascot.webp" alt="" />
+          <span className="numi-rail__brand-mark" aria-hidden="true">
+            <span />
+            <span />
           </span>
           <span className="numi-rail__word">bindit</span>
         </a>
@@ -78,7 +108,6 @@ export function SiteSidebar({ active }: SiteSidebarProps) {
           className="numi-rail__collapse"
           type="button"
           aria-expanded={!shut}
-          aria-controls="bindet-rail-list"
           aria-label={shut ? 'Expand sidebar' : 'Collapse sidebar'}
           title={shut ? 'Expand sidebar' : 'Collapse sidebar'}
           onClick={toggleRail}
@@ -89,28 +118,17 @@ export function SiteSidebar({ active }: SiteSidebarProps) {
         </button>
       </div>
 
-      <ol className="numi-rail__list" id="bindet-rail-list">
-        {ITEMS.map((item) => (
-          <li key={item.id}>
-            <a
-              className={`numi-rail__item is-${item.id} ${active === item.id ? 'is-active' : ''}`}
-              href={`#${item.id}`}
-              aria-current={active === item.id ? 'page' : undefined}
-              title={shut ? item.label : undefined}
-            >
-              <span className="numi-rail__icon"><Mark kind={item.id} /></span>
-              <span className="numi-rail__copy">
-                <span className="numi-rail__label">{item.label}</span>
-                <span className="numi-rail__hint">{item.hint}</span>
-              </span>
-            </a>
-          </li>
-        ))}
-      </ol>
+      <div className="numi-rail__nav" id="bindet-rail-list">
+        <NavGroup label="Study" items={STUDY_ITEMS} active={active} />
+        <NavGroup label="Account" items={ACCOUNT_ITEMS} active={active} />
+      </div>
 
       <div className="numi-rail__footer">
-        <span className="numi-rail__footer-dot" />
-        <span>Study system online</span>
+        <div className="numi-rail__sync-icon"><img src="/bindit-mascot.webp" alt="" /></div>
+        <div className="numi-rail__footer-copy">
+          <strong>bindit workspace</strong>
+          <span><i /> Ready to study</span>
+        </div>
       </div>
     </nav>
   )
