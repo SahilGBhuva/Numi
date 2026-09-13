@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { consumeAuthRedirectSession, loadAuthSession, refreshAuthSession, signIn, signUp, type AuthSession } from '../lib/auth'
+import { consumeAuthRedirectSession, loadAuthSession, refreshAuthSession, resendSignupConfirmation, signIn, signUp, type AuthSession } from '../lib/auth'
 import { AuthContext } from '../lib/AuthContext'
 import './AuthGate.css'
 import './GuestAuth.css'
@@ -27,6 +27,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [confirmationEmail, setConfirmationEmail] = useState('')
+  const [resendSeconds, setResendSeconds] = useState(0)
+  const [resending, setResending] = useState(false)
 
   const passwordScore = useMemo(() => {
     let score = 0
@@ -48,10 +51,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  useEffect(() => {
+    if (resendSeconds <= 0) return
+    const timer = window.setInterval(() => setResendSeconds((value) => Math.max(0, value - 1)), 1000)
+    return () => window.clearInterval(timer)
+  }, [resendSeconds])
+
   function switchMode(nextMode: Mode) {
     setMode(nextMode)
     setError('')
     setMessage('')
+    setConfirmationEmail('')
+    setResendSeconds(0)
     setPassword('')
     setShowPassword(false)
   }
@@ -63,11 +74,26 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setMessage('')
   }
 
+  async function resendConfirmation() {
+    if (!confirmationEmail || resendSeconds > 0 || resending) return
+    setResending(true)
+    setError('')
+    try {
+      await resendSignupConfirmation(confirmationEmail)
+      setMessage(`A new confirmation email was sent to ${confirmationEmail}.`)
+      setResendSeconds(60)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not resend the confirmation email.')
+    } finally {
+      setResending(false)
+    }
+  }
+
   if (loading) {
     return (
       <main className="auth-screen auth-loading-screen">
         <div className="auth-loading-orb" aria-hidden="true" />
-        <p>Opening Bindit…</p>
+        <p>Opening bindit…</p>
       </main>
     )
   }
@@ -86,9 +112,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
             setError('Use at least 8 characters for your password.')
             return
           }
-          const result = await signUp(email.trim(), password)
+          const normalizedEmail = email.trim()
+          const result = await signUp(normalizedEmail, password)
           if (result.session) setSession(result.session)
-          else setMessage('Check your inbox and press “Confirm your email.” We’ll bring you straight back to Bindit and sign you in.')
+          else {
+            setConfirmationEmail(normalizedEmail)
+            setResendSeconds(60)
+            setMessage(`Check ${normalizedEmail} and confirm your email. We’ll bring you straight back to bindit.`)
+          }
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'We couldn’t complete that request. Try again.')
@@ -101,16 +132,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
       <main className="auth-screen">
         <section className="auth-shell">
           <aside className="auth-story">
-            <div className="auth-brand-row"><BrandMark /><span>Bindit</span></div>
+            <div className="auth-brand-row"><BrandMark /><span>bindit</span></div>
             <div className="auth-story-copy">
-              <span className="auth-eyebrow">Study smarter, consistently.</span>
-              <h1>Turn scattered studying into connected understanding.</h1>
-              <p>Build momentum, connect ideas, and keep everything you learn in one place.</p>
+              <span className="auth-eyebrow">Your learning command center</span>
+              <h1>Turn everything you study into momentum.</h1>
+              <p>Notes, quizzes, progress, friends, and AI guidance — connected in one fast workspace.</p>
             </div>
             <div className="auth-preview-card auth-preview-card--brand">
               <img className="auth-preview-mascot" src="/bindit-mascot.webp" alt="Bindit otter mascot" />
               <div className="auth-preview-content">
-                <div className="auth-preview-top"><span className="auth-preview-dot" /><span>Today’s progress</span></div>
+                <div className="auth-preview-top"><span className="auth-preview-dot" /><span>Live learning graph</span></div>
                 <strong>3 concepts connected</strong>
                 <div className="auth-progress-track"><span /></div>
                 <div className="auth-preview-tags"><span>Functions</span><span>Vectors</span><span>Biology</span></div>
@@ -119,12 +150,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
           </aside>
 
           <section className="auth-panel">
-            <div className="auth-mobile-brand"><BrandMark /><span>Bindit</span></div>
+            <div className="auth-mobile-brand"><BrandMark /><span>bindit</span></div>
             <div className="auth-panel-inner">
               <div className="auth-heading">
-                <span className="auth-kicker">{mode === 'login' ? 'Welcome back' : 'Start your learning system'}</span>
-                <h2>{mode === 'login' ? 'Log in to Bindit' : 'Create your account'}</h2>
-                <p>{mode === 'login' ? 'Pick up right where you left off.' : 'A few seconds now, a much better study flow later.'}</p>
+                <span className="auth-kicker">{mode === 'login' ? 'Welcome back' : 'Build your learning system'}</span>
+                <h2>{mode === 'login' ? 'Log in to bindit' : 'Create your account'}</h2>
+                <p>{mode === 'login' ? 'Pick up exactly where you left off.' : 'Start with your notes. bindit handles the rest.'}</p>
               </div>
 
               <div className="auth-segmented" role="tablist" aria-label="Authentication mode">
@@ -154,8 +185,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
                 {error ? <div className="auth-feedback auth-error" role="alert">{error}</div> : null}
                 {message ? <div className="auth-feedback auth-message" role="status">{message}</div> : null}
+                {confirmationEmail ? (
+                  <button className="auth-resend" type="button" disabled={resending || resendSeconds > 0} onClick={resendConfirmation}>
+                    {resending ? 'Sending…' : resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : 'Resend confirmation email'}
+                  </button>
+                ) : null}
                 <button className="auth-primary" type="submit" disabled={busy}>{busy ? <><span className="auth-spinner" aria-hidden="true" />Working…</> : mode === 'login' ? 'Log in' : 'Create account'}</button>
-                <p className="auth-terms">{mode === 'signup' ? 'By creating an account, you agree to use Bindit responsibly.' : 'Your progress stays connected to your account.'}</p>
+                <p className="auth-terms">{mode === 'signup' ? 'By creating an account, you agree to use bindit responsibly.' : 'Your progress stays connected to your account.'}</p>
               </form>
 
               <div className="auth-guest-separator"><span>or</span></div>
@@ -163,7 +199,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               <p className="auth-guest-copy">Guest mode is temporary. Sign in to save progress, use AI notes, and connect with friends.</p>
 
               <p className="auth-switch-copy">
-                {mode === 'login' ? 'New to Bindit?' : 'Already have an account?'}{' '}
+                {mode === 'login' ? 'New to bindit?' : 'Already have an account?'}{' '}
                 <button type="button" disabled={busy} onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Create an account' : 'Log in'}</button>
               </p>
             </div>
