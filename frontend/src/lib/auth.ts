@@ -19,6 +19,12 @@ const LEGACY_SESSION_KEY = 'numi-auth-session'
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 let configPromise: Promise<AuthConfig> | null = null
 
+function appReturnUrl() {
+  const configuredUrl = import.meta.env.VITE_PUBLIC_APP_URL?.trim()
+  const baseUrl = configuredUrl || window.location.origin
+  return `${baseUrl.replace(/\/$/, '')}/`
+}
+
 function config() {
   configPromise ??= fetch(`${API_URL}/api/auth/config`).then(async (response) => {
     if (!response.ok) throw new Error('Accounts are not configured yet.')
@@ -53,9 +59,11 @@ export function saveAuthSession(session: AuthSession | null) {
   }
 }
 
-async function authRequest(path: string, body: Record<string, string>): Promise<AuthResponse> {
+async function authRequest(path: string, body: Record<string, string>, redirectTo?: string): Promise<AuthResponse> {
   const settings = await config()
-  const response = await fetch(`${settings.supabase_url}/auth/v1/${path}`, {
+  const authUrl = new URL(`${settings.supabase_url}/auth/v1/${path}`)
+  if (redirectTo) authUrl.searchParams.set('redirect_to', redirectTo)
+  const response = await fetch(authUrl, {
     method: 'POST',
     headers: { apikey: settings.supabase_anon_key, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -93,7 +101,7 @@ export async function refreshAuthSession(session: AuthSession): Promise<AuthSess
 }
 
 export async function signUp(email: string, password: string) {
-  const data = await authRequest('signup', { email, password })
+  const data = await authRequest('signup', { email, password }, appReturnUrl())
   const session = asSession(data)
   saveAuthSession(session)
   return { session, needsConfirmation: !session }
@@ -107,7 +115,40 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function requestPasswordReset(email: string) {
-  await authRequest('recover', { email })
+  await authRequest('recover', { email }, appReturnUrl())
+}
+
+export function consumeAuthRedirectSession(): AuthSession | null {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const accessToken = params.get('access_token')
+  const refreshToken = params.get('refresh_token')
+  if (!accessToken || !refreshToken) return null
+
+  const expiresIn = Number(params.get('expires_in'))
+  const tokenPayload = accessToken.split('.')[1]
+  let user: AuthUser | null = null
+  try {
+    const normalized = tokenPayload.replace(/-/g, '+').replace(/_/g, '/')
+    const payload = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='))) as {
+      sub?: string
+      email?: string
+      user_metadata?: AuthUser['user_metadata']
+    }
+    if (payload.sub) user = { id: payload.sub, email: payload.email, user_metadata: payload.user_metadata }
+  } catch {
+    user = null
+  }
+  if (!user) return null
+
+  const session: AuthSession = {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_at: Number.isFinite(expiresIn) ? Math.floor(Date.now() / 1000) + expiresIn : undefined,
+    user,
+  }
+  saveAuthSession(session)
+  window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`)
+  return session
 }
 
 export async function updateUsername(session: AuthSession, username: string): Promise<AuthSession> {

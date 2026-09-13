@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { loadAuthSession, refreshAuthSession, signIn, signUp, type AuthSession } from '../lib/auth'
+import { consumeAuthRedirectSession, loadAuthSession, refreshAuthSession, signIn, signUp, type AuthSession } from '../lib/auth'
 import { AuthContext } from '../lib/AuthContext'
 import './AuthGate.css'
 import './GuestAuth.css'
@@ -17,7 +17,7 @@ function BrandMark() {
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(loadAuthSession())
+  const [session, setSession] = useState<AuthSession | null>(() => consumeAuthRedirectSession() ?? loadAuthSession())
   const [loading, setLoading] = useState(Boolean(session))
   const [guestMode, setGuestMode] = useState(() => localStorage.getItem(GUEST_KEY) === '1')
   const [mode, setMode] = useState<Mode>('login')
@@ -88,7 +88,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           }
           const result = await signUp(email.trim(), password)
           if (result.session) setSession(result.session)
-          else setMessage('You’re almost in — check your email to confirm your account, then log in.')
+          else setMessage('Check your inbox and press “Confirm your email.” We’ll bring you straight back to Bindit and sign you in.')
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'We couldn’t complete that request. Try again.')

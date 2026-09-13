@@ -65,7 +65,7 @@ export function Settings({ session, onSession }: SettingsProps) {
       } else {
         const result = await signUp(email.trim(), password)
         if (!result.session) {
-          setMessage('Check your email to confirm your account, then log in.')
+          setMessage('Check your inbox and press “Confirm your email.” We’ll bring you straight back to Bindit and sign you in.')
         } else {
           onSession(result.session)
           setMessage('Your account is ready.')
