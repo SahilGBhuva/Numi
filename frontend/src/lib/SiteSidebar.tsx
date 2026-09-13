@@ -16,14 +16,14 @@ const ITEMS: { id: Screen; label: string }[] = [
 ]
 
 function Mark({ kind }: { kind: Screen }) {
-  if (kind === 'home') return <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="#e0a045" d="M5 15.2 16 5.4 27 15.2V27a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" /><path fill="#c45c3c" d="M13.2 18.4h5.6V29h-5.6z" /><circle fill="#f3d48a" cx="16" cy="12.2" r="1.6" /></svg>
+  if (kind === 'home') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 8-7 8 7v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 21v-7h6v7"/></svg>
   if (kind === 'tools') return <WrenchMark variant="sidebar" className="wrench-mark wrench-mark--sidebar" />
-  if (kind === 'progress') return <svg viewBox="0 0 32 32" aria-hidden="true"><rect fill="#4d7ea8" x="5" y="16" width="6" height="11" rx="1.4" /><rect fill="#6f9a7a" x="13" y="8" width="6" height="19" rx="1.4" /><rect fill="#e0a045" x="21" y="12" width="6" height="15" rx="1.4" /></svg>
-  if (kind === 'games') return <svg viewBox="0 0 32 32" aria-hidden="true"><rect fill="#d36b4f" x="3" y="10" width="26" height="14" rx="7" /><rect fill="#f3e6c4" x="8.6" y="16" width="6" height="2.2" rx="1" /><rect fill="#f3e6c4" x="10.5" y="14.1" width="2.2" height="6" rx="1" /><circle fill="#7eb8e8" cx="21.2" cy="15.2" r="1.7" /><circle fill="#e0a045" cx="23.8" cy="18.4" r="1.7" /></svg>
-  if (kind === 'goals') return <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="#e0a045" d="M7 6h18v21l-9-3.4L7 27z" /><path fill="#c45c3c" d="M7 6h18v4H7z" /><rect fill="#f3e6c4" x="11" y="13.4" width="10" height="2" rx="1" /><rect fill="#f3e6c4" x="11" y="17.6" width="7" height="2" rx="1" /></svg>
-  if (kind === 'profile') return <svg viewBox="0 0 32 32" aria-hidden="true"><circle fill="#6d4c8d" cx="16" cy="16" r="13" /><circle fill="#f3e6c4" cx="16" cy="13" r="5" /><path fill="#3a2433" d="M8.4 26.2c1.6-4.6 4.4-6.6 7.6-6.6s6 2 7.6 6.6" /></svg>
-  if (kind === 'settings') return <svg viewBox="0 0 32 32" aria-hidden="true"><circle fill="#b8af82" cx="16" cy="16" r="13" /><path fill="#1a2430" d="M16 9.2a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6zm0 4.1a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4z" /><circle fill="#e0a045" cx="16" cy="16" r="2.1" /></svg>
-  return <svg viewBox="0 0 32 32" aria-hidden="true"><circle fill="#8a5bb5" cx="16" cy="16" r="13" /><circle fill="#f3e6c4" cx="10.2" cy="16" r="2.1" /><circle fill="#f3e6c4" cx="16" cy="16" r="2.1" /><circle fill="#f3e6c4" cx="21.8" cy="16" r="2.1" /></svg>
+  if (kind === 'progress') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
+  if (kind === 'games') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8h10a5 5 0 0 1 4.8 6.4l-1 3.4a2 2 0 0 1-3.3.9L15 16H9l-2.5 2.7a2 2 0 0 1-3.3-.9l-1-3.4A5 5 0 0 1 7 8Z"/><path d="M7 12v4M5 14h4M16.5 12.5h.01M19 15h.01"/></svg>
+  if (kind === 'goals') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+  if (kind === 'profile') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+  if (kind === 'settings') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h-.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.14.35.35.68.6 1 .25.32.38.7.4 1.1V13a1.7 1.7 0 0 0-.6 1c-.25.32-.46.65-.6 1Z"/></svg>
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
 }
 
 type SiteSidebarProps = { active: Screen }
@@ -31,9 +31,9 @@ type SiteSidebarProps = { active: Screen }
 export function SiteSidebar({ active }: SiteSidebarProps) {
   return (
     <nav className="bindit-rail" aria-label="Main">
-      <a className="bindit-rail__brand" href="#home" aria-label="Bindit home">
+      <a className="bindit-rail__brand" href="#home" aria-label="bindit home">
         <span className="bindit-rail__brand-mark" aria-hidden="true"><img src="/bindit-mascot.webp" alt="" /></span>
-        Bindit
+        bindit
       </a>
       <ol className="bindit-rail__list">
         {ITEMS.map((item) => (
